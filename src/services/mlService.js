@@ -69,45 +69,13 @@ function heuristicScore(text) {
   return clamp(score + jitter, 0.05, 0.97);
 }
 
-export async function runPipeline(content, { onStage } = {}) {
-  const language = detectLanguage(content);
-  const stages = [
-    { stage: "lang_id", label: "Language identified", delay: 350 },
-    { stage: "small_lm", label: "Small LM triage", delay: 550 },
-    { stage: "transformer", label: "Transformer classification", delay: 750 },
-  ];
+const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
-  for (const s of stages) {
-    // eslint-disable-next-line no-await-in-loop
-    await new Promise((r) => setTimeout(r, s.delay));
-    onStage?.(s.stage);
-  }
-
-  const rawScore = heuristicScore(content);
-  let verdict = "uncertain";
-  if (rawScore >= 0.66) verdict = "fake";
-  else if (rawScore <= 0.35) verdict = "real";
-
-  const confidence =
-    verdict === "uncertain" ? clamp(1 - Math.abs(rawScore - 0.5) * 2, 0.3, 0.6) : clamp(rawScore, 0.55, 0.97);
-
-  const explanations = {
-    fake: "Language patterns and structure closely match previously flagged misinformation templates (urgency cues, unverifiable calls to forward). No corroborating source found.",
-    real: "No high-risk misinformation markers detected. Claim structure resembles verified reporting patterns in the training set.",
-    uncertain: "Statement reads as opinion, personal experience, or a claim without enough specific, checkable detail for a confident verdict.",
-  };
-
-  return {
-    verdict,
-    confidence: Number(confidence.toFixed(2)),
-    model: "IndicBERT-FND v0.4",
-    language,
-    explanation: explanations[verdict],
-    matchedClaims: [],
-    pipeline: [
-      { stage: "lang_id", label: "Language identification", detail: `Detected ${language.name}` },
-      { stage: "small_lm", label: "Small LM triage", detail: verdict === "uncertain" ? "Low newsworthiness — flagged low priority" : "Passed to full classifier" },
-      { stage: "transformer", label: "Transformer classifier", detail: `${(confidence * 100).toFixed(0)}% confidence` },
-    ],
-  };
+export async function runPipeline(content) {
+  const res = await fetch(`${API_BASE}/analyze`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: content }),
+  });
+  return res.json();
 }

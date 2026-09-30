@@ -1,237 +1,256 @@
 // ---------------------------------------------------------------------------
-// Frontend service layer.
+// Frontend service layer — now talking to the real FastAPI backend
+// (MajorProject-Backend) instead of the in-memory/localStorage mock store.
 //
-// Every function here returns a Promise, shaped the way a real REST/GraphQL
-// call would respond. Right now they read/write an in-memory + localStorage
-// mock store. To wire up a real backend, replace the *body* of each function
-// with a `fetch(...)` call — keep the function names and return shapes the
-// same and nothing above this file (components, hooks, pages) needs to
-// change. See README.md for the intended REST endpoints per function.
+// Every exported function keeps the same name/signature/return-shape the
+// rest of the app already expects (hooks, pages, components) — only the
+// bodies changed, per the original file's own "wiring a real backend" plan.
 // ---------------------------------------------------------------------------
 
-import { seedUsers, seedPosts, trending, CURRENT_USER_ID } from "./mockData";
-import { runPipeline } from "./mlService";
+const API_BASE = import.meta.env.VITE_API_BASE_URL;
 
-const STORAGE_KEY = "sathi_mock_db_v1";
-const NETWORK_DELAY = 380;
-
-function loadDb() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch {
-    // ignore corrupt storage
-  }
-  return { users: seedUsers, posts: seedPosts };
+if (!API_BASE) {
+  // Fail loudly in dev rather than silently hitting a relative /undefined URL.
+  // eslint-disable-next-line no-console
+  console.warn("VITE_API_BASE_URL is not set — set it in .env, e.g. http://localhost:8000");
 }
 
-let db = loadDb();
+const TOKEN_KEY = "sathi_token";
 
-function persist() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-  } catch {
-    // storage full / unavailable — fine for a demo, state just won't persist
-  }
+// ---- Auth token storage ------------------------------------------------
+// No login screen exists yet (see AuthContext.jsx), so for now a token is
+// expected to be placed here manually, e.g. in the browser console:
+//   localStorage.setItem("sathi_token", "<access_token from /auth/login>")
+// `login`/`register` below do this automatically once there's a form to
+// call them from.
+
+export function getAuthToken() {
+  return localStorage.getItem(TOKEN_KEY);
 }
 
-const delay = (ms = NETWORK_DELAY) => new Promise((r) => setTimeout(r, ms + Math.random() * 180));
-const uid = (prefix) => `${prefix}_${Math.random().toString(36).slice(2, 9)}`;
+export function setAuthToken(token) {
+  localStorage.setItem(TOKEN_KEY, token);
+}
 
-// ---- Realtime-ish pub/sub ---------------------------------------------------
-// A real backend would push these over a websocket/SSE connection; for the
-// mock layer we use a plain in-memory event bus so any mounted list (feed,
-// profile, thread) stays in sync no matter which component created/changed
-// a post. Swap this for a socket subscription later without touching call
-// sites — they just call onPostCreated/onPostUpdated.
+export function clearAuthToken() {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+// ---- Low-level request helper ------------------------------------------
+
+async function request(path, { method = "GET", body, auth = true } = {}) {
+  const headers = {};
+  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (auth) {
+    const token = getAuthToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  if (res.status === 204) return null;
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch {
+    // no body (e.g. some error responses) — fine
+  }
+
+  if (!res.ok) {
+    const message = data?.detail || `Request failed (${res.status})`;
+    throw new Error(typeof message === "string" ? message : JSON.stringify(message));
+  }
+
+  return data;
+}
+
+// ---- Realtime: post_created / post_updated over WebSocket ------------------
+// Replaces the mock's in-memory pub/sub with the backend's real WS push
+// (`GET /ws` — see websockets/manager.py). Same subscribe API as before:
+// call returns an unsubscribe function, so existing `useEffect(() => onPostX(cb), [])`
+// call sites don't need to change.
 
 const createdListeners = new Set();
 const updatedListeners = new Set();
 
-export function onPostCreated(cb) {
-  createdListeners.add(cb);
-  return () => createdListeners.delete(cb);
-}
-export function onPostUpdated(cb) {
-  updatedListeners.add(cb);
-  return () => updatedListeners.delete(cb);
+let socket = null;
+let reconnectTimer = null;
+
+function wsUrl() {
+  return `${API_BASE.replace(/^http/, "ws")}/ws`;
 }
 
-function hydratePost(post) {
-  const author = db.users.find((u) => u.id === post.authorId);
-  const replyCount = db.posts.filter((p) => p.parentId === post.id).length;
-  return {
-    ...post,
-    author,
-    stats: { ...post.stats, comments: replyCount },
+function ensureSocket() {
+  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+
+  socket = new WebSocket(wsUrl());
+
+  socket.onmessage = (event) => {
+    let msg;
+    try {
+      msg = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    if (msg.type === "post_created") {
+      createdListeners.forEach((cb) => cb(msg.post));
+    } else if (msg.type === "post_updated") {
+      updatedListeners.forEach((cb) => cb(msg.post));
+    }
+  };
+
+  socket.onclose = () => {
+    socket = null;
+    // Only bother reconnecting while someone's still listening.
+    if ((createdListeners.size > 0 || updatedListeners.size > 0) && !reconnectTimer) {
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        ensureSocket();
+      }, 2000);
+    }
+  };
+
+  socket.onerror = () => {
+    socket?.close();
   };
 }
 
-function trustScoreFor(userId) {
-  const posts = db.posts.filter((p) => p.authorId === userId && p.analysis?.status === "analyzed");
-  if (posts.length === 0) return null;
-  const real = posts.filter((p) => p.analysis.verdict === "real").length;
-  const fake = posts.filter((p) => p.analysis.verdict === "fake").length;
-  const scored = real + fake;
-  if (scored === 0) return null;
-  return Math.round((real / scored) * 100);
+export function onPostCreated(cb) {
+  createdListeners.add(cb);
+  ensureSocket();
+  return () => createdListeners.delete(cb);
+}
+
+export function onPostUpdated(cb) {
+  updatedListeners.add(cb);
+  ensureSocket();
+  return () => updatedListeners.delete(cb);
 }
 
 // ---- Auth / current user ---------------------------------------------------
 
 export async function getCurrentUser() {
-  await delay(120);
-  const u = db.users.find((u) => u.id === CURRENT_USER_ID);
-  return { ...u, trustScore: trustScoreFor(u.id) };
+  if (!getAuthToken()) return null;
+  return request("/auth/me");
+}
+
+export async function login(username, password) {
+  const data = await request("/auth/login", { method: "POST", body: { username, password }, auth: false });
+  setAuthToken(data.access_token);
+  return data.user;
+}
+
+export async function register({ username, email, password, displayName }) {
+  const data = await request("/auth/register", {
+    method: "POST",
+    body: { username, email, password, display_name: displayName },
+    auth: false,
+  });
+  setAuthToken(data.access_token);
+  return data.user;
+}
+
+export function logout() {
+  clearAuthToken();
 }
 
 // ---- Feed -------------------------------------------------------------------
 
 export async function getFeed({ limit = 20 } = {}) {
-  await delay();
-  return db.posts
-    .filter((p) => p.parentId === null)
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .slice(0, limit)
-    .map(hydratePost);
+  return request(`/feed?limit=${limit}`);
 }
 
 export async function getPost(id) {
-  await delay(220);
-  const post = db.posts.find((p) => p.id === id);
-  if (!post) throw new Error("Post not found");
-  return hydratePost(post);
+  return request(`/posts/${id}`);
 }
 
 export async function getReplies(postId) {
-  await delay(260);
-  return db.posts
-    .filter((p) => p.parentId === postId)
-    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
-    .map(hydratePost);
+  return request(`/posts/${postId}/replies`);
 }
 
 // ---- Creating content ---------------------------------------------------
 
-export async function createPost({ content, languageCode = null, parentId = null }) {
-  await delay(300);
-  const id = uid(parentId ? "c" : "p");
-  const post = {
-    id,
-    authorId: CURRENT_USER_ID,
-    parentId,
-    language: languageCode ? { code: languageCode, name: languageCode } : { code: "auto", name: "Detecting…" },
-    content,
-    media: null,
-    createdAt: new Date().toISOString(),
-    stats: { likes: 0, reposts: 0, comments: 0, views: 1 },
-    likedByMe: false,
-    repostedByMe: false,
-    analysis: { status: "processing", verdict: null, confidence: null, model: "IndicBERT-FND v0.4", explanation: "", matchedClaims: [], pipeline: [] },
-  };
-  db.posts.unshift(post);
-  persist();
-
-  const hydrated = hydratePost(post);
-  createdListeners.forEach((cb) => cb(hydrated));
-
-  // fire-and-forget the async "model pipeline"; components stay in sync via
-  // the onPostUpdated bus (see usePostList) rather than polling.
-  runPipeline(content).then((result) => {
-    const target = db.posts.find((p) => p.id === id);
-    if (!target) return;
-    target.analysis = { status: "analyzed", ...result };
-    target.language = result.language;
-    persist();
-    const updated = hydratePost(target);
-    updatedListeners.forEach((cb) => cb(updated));
+export async function createPost({ content, languageCode = null, parentId = null, imageBase64 = null, imageMimeType = null }) {
+  return request("/posts", {
+    method: "POST",
+    body: {
+      content,
+      languageCode,
+      parentId,
+      image_base64: imageBase64,
+      image_mime_type: imageMimeType,
+    },
   });
-
-  return hydrated;
+  // Note: the mock version also fired `runPipeline()` and pushed the result
+  // through the update bus itself. The real backend does that server-side
+  // (background task) and pushes the analyzed post over the WebSocket as a
+  // `post_updated` event once it's done — no extra call needed here.
 }
 
 // ---- Engagement ---------------------------------------------------------
 
 export async function toggleLike(postId) {
-  await delay(150);
-  const post = db.posts.find((p) => p.id === postId);
-  if (!post) throw new Error("Post not found");
-  post.likedByMe = !post.likedByMe;
-  post.stats.likes += post.likedByMe ? 1 : -1;
-  persist();
-  const updated = hydratePost(post);
-  updatedListeners.forEach((cb) => cb(updated));
-  return updated;
+  return request(`/posts/${postId}/like`, { method: "POST" });
 }
 
 export async function toggleRepost(postId) {
-  await delay(150);
-  const post = db.posts.find((p) => p.id === postId);
-  if (!post) throw new Error("Post not found");
-  post.repostedByMe = !post.repostedByMe;
-  post.stats.reposts += post.repostedByMe ? 1 : -1;
-  persist();
-  const updated = hydratePost(post);
-  updatedListeners.forEach((cb) => cb(updated));
-  return updated;
+  return request(`/posts/${postId}/repost`, { method: "POST" });
 }
 
 // ---- Users / profile ------------------------------------------------------
 
 export async function getUserByUsername(username) {
-  await delay(220);
-  const user = db.users.find((u) => u.username === username);
-  if (!user) throw new Error("User not found");
-  return { ...user, trustScore: trustScoreFor(user.id) };
+  return request(`/users/${encodeURIComponent(username)}`, { auth: false });
 }
 
 export async function getUserPosts(username, tab = "posts") {
-  await delay();
-  const user = db.users.find((u) => u.username === username);
-  if (!user) return [];
-  if (tab === "posts") {
-    return db.posts.filter((p) => p.authorId === user.id && p.parentId === null).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(hydratePost);
-  }
-  if (tab === "replies") {
-    return db.posts.filter((p) => p.authorId === user.id && p.parentId !== null).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(hydratePost);
-  }
-  if (tab === "likes") {
-    return db.posts.filter((p) => p.likedByMe && user.id === CURRENT_USER_ID).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).map(hydratePost);
-  }
-  return [];
+  return request(`/users/${encodeURIComponent(username)}/posts?tab=${tab}`, { auth: false });
 }
 
 export async function updateUser(username, patch) {
-  await delay(300);
-  const user = db.users.find((u) => u.username === username);
-  if (!user) throw new Error("User not found");
-  Object.assign(user, patch);
-  persist();
-  return { ...user, trustScore: trustScoreFor(user.id) };
+  // `patch` keys already line up with the backend's expected aliases
+  // (displayName, bio, location, avatarColor, languages, autoAnalyze,
+  // disputedThreshold, defaultPostLanguage) — see app/models/schemas.py's
+  // UserUpdate. No transform needed.
+  return request(`/users/${encodeURIComponent(username)}`, { method: "PATCH", body: patch });
 }
 
 // ---- Discovery --------------------------------------------------------------
 
 export async function getTrending() {
-  await delay(200);
-  return trending;
+  return request("/trending", { auth: false });
 }
 
 export async function searchAll(query) {
-  await delay(260);
-  const q = query.trim().toLowerCase();
-  if (!q) return { posts: [], users: [] };
-  const posts = db.posts
-    .filter((p) => p.parentId === null && (p.content.toLowerCase().includes(q) || p.translation?.toLowerCase().includes(q)))
-    .map(hydratePost);
-  const users = db.users.filter(
-    (u) => u.username.toLowerCase().includes(q) || u.displayName.toLowerCase().includes(q)
-  );
-  return { posts, users };
+  if (!query.trim()) return { posts: [], users: [] };
+  return request(`/search?q=${encodeURIComponent(query)}`, { auth: false });
 }
 
+// ---- Notifications ----------------------------------------------------------
+// Not in the original mock (that page is still hardcoded) but exposed here
+// for when Notifications.jsx gets wired up.
+
+export async function getNotifications() {
+  return request("/notifications");
+}
+
+export async function markNotificationRead(id) {
+  return request(`/notifications/${id}/read`, { method: "POST" });
+}
+
+// ---- Demo data reset ----------------------------------------------------
+// No-op now — there's no local mock store left to reset. Kept so
+// Settings.jsx's existing "reset demo data" button doesn't need changing.
+
 export async function resetMockData() {
-  localStorage.removeItem(STORAGE_KEY);
-  db = { users: seedUsers, posts: seedPosts };
+  // eslint-disable-next-line no-console
+  console.info("resetMockData: no-op — now backed by a real database.");
   return true;
 }
