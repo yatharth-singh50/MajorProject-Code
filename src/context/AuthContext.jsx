@@ -1,5 +1,11 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { getCurrentUser, updateUser } from "../services/api";
+import {
+  getCurrentUser,
+  updateUser,
+  login as apiLogin,
+  register as apiRegister,
+  logout as apiLogout,
+} from "../services/api";
 
 const AuthContext = createContext(null);
 
@@ -8,10 +14,15 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getCurrentUser().then((u) => {
-      setUser(u);
-      setLoading(false);
-    });
+    getCurrentUser()
+      .then(setUser)
+      .catch(() => {
+        // Stored token is missing/expired/invalid -- clear it so we don't
+        // keep retrying a dead token on every reload.
+        apiLogout();
+        setUser(null);
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -27,8 +38,26 @@ export function AuthProvider({ children }) {
     return updated;
   }, [user]);
 
+  // `identifier` is a username OR an email -- the backend accepts either.
+  const login = useCallback(async (identifier, password) => {
+    const u = await apiLogin(identifier, password);
+    setUser(u);
+    return u;
+  }, []);
+
+  const register = useCallback(async ({ username, email, password, displayName }) => {
+    const u = await apiRegister({ username, email, password, displayName });
+    setUser(u);
+    return u;
+  }, []);
+
+  const logout = useCallback(() => {
+    apiLogout();
+    setUser(null);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, refreshUser, saveProfile }}>
+    <AuthContext.Provider value={{ user, loading, refreshUser, saveProfile, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { toggleLike, toggleRepost, onPostUpdated } from "../services/api";
+import { toggleLike, toggleRepost, deletePost, onPostUpdated, onPostDeleted } from "../services/api";
 
 export function usePostList(fetcher, deps = []) {
   const [posts, setPosts] = useState(null); // null = loading
@@ -26,12 +26,25 @@ export function usePostList(fetcher, deps = []) {
     });
   }, []);
 
+  // A delete elsewhere (another tab, or this one) cascades to replies on
+  // the backend and broadcasts every id removed -- drop all of them from
+  // whatever list this hook is showing, parent or child alike.
+  useEffect(() => {
+    return onPostDeleted((ids) => {
+      setPosts((prev) => (prev ? prev.filter((p) => !ids.includes(p.id)) : prev));
+    });
+  }, []);
+
   const patchPost = useCallback((id, patch) => {
     setPosts((prev) => (prev ? prev.map((p) => (p.id === id ? { ...p, ...patch } : p)) : prev));
   }, []);
 
   const prependPost = useCallback((post) => {
     setPosts((prev) => (prev ? [post, ...prev] : prev));
+  }, []);
+
+  const removePost = useCallback((id) => {
+    setPosts((prev) => (prev ? prev.filter((p) => p.id !== id) : prev));
   }, []);
 
   const handleLike = useCallback(async (id) => {
@@ -71,5 +84,19 @@ export function usePostList(fetcher, deps = []) {
     }
   }, [patchPost, reload]);
 
-  return { posts, error, reload, patchPost, prependPost, handleLike, handleRepost };
+  const handleDelete = useCallback(async (id) => {
+    // optimistic -- the onPostDeleted broadcast above will also remove it
+    // (and any sibling replies) from every other open list, this just
+    // avoids waiting on the round trip for the list the click happened in.
+    const previous = posts;
+    removePost(id);
+    try {
+      await deletePost(id);
+    } catch (e) {
+      setPosts(previous);
+      throw e;
+    }
+  }, [posts, removePost]);
+
+  return { posts, error, reload, patchPost, prependPost, removePost, handleLike, handleRepost, handleDelete };
 }

@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, CalendarDays, MapPin, BadgeCheck } from "lucide-react";
+import { ArrowLeft, CalendarDays, MapPin, BadgeCheck, Camera } from "lucide-react";
 import Avatar from "../components/common/Avatar";
 import Button from "../components/common/Button";
 import Modal from "../components/common/Modal";
+import ImageCropModal from "../components/common/ImageCropModal";
 import PostCard from "../components/post/PostCard";
 import { PostSkeleton } from "../components/common/Skeleton";
 import EmptyState from "../components/common/EmptyState";
@@ -61,6 +62,12 @@ export default function Profile() {
   const [editOpen, setEditOpen] = useState(false);
   const [form, setForm] = useState({ displayName: "", bio: "", location: "" });
 
+  // Avatar / banner upload + crop state
+  const avatarInputRef = useRef(null);
+  const bannerInputRef = useRef(null);
+  const [cropFile, setCropFile] = useState(null);
+  const [cropShape, setCropShape] = useState("circle"); // "circle" | "rect"
+
   const isMe = me?.username === username;
 
   useEffect(() => {
@@ -71,7 +78,7 @@ export default function Profile() {
     });
   }, [username]);
 
-  const { posts, handleLike, handleRepost } = usePostList(
+  const { posts, handleLike, handleRepost, handleDelete } = usePostList(
     () => getUserPosts(username, tab.toLowerCase()),
     [username, tab]
   );
@@ -81,6 +88,35 @@ export default function Profile() {
     setProfile((p) => ({ ...p, ...updated }));
     setEditOpen(false);
     push("Profile updated");
+  };
+
+  const pickAvatarFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow picking the same file again later
+    if (!file) return;
+    setCropShape("circle");
+    setCropFile(file);
+  };
+
+  const pickBannerFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setCropShape("rect");
+    setCropFile(file);
+  };
+
+  const handleCropConfirm = async (dataUrl) => {
+    const patch = cropShape === "circle" ? { avatarImage: dataUrl } : { bannerImage: dataUrl };
+    try {
+      const updated = await saveProfile(patch);
+      setProfile((p) => ({ ...p, ...updated }));
+      push(cropShape === "circle" ? "Profile photo updated" : "Banner updated");
+    } catch (err) {
+      push(err.message || "Couldn't save the image");
+    } finally {
+      setCropFile(null);
+    }
   };
 
   if (!profile) {
@@ -108,11 +144,41 @@ export default function Profile() {
         </div>
       </header>
 
-      <div className="h-32 bg-gradient-to-br from-brand-soft to-uncertain-soft sm:h-40" />
+      {/* --- Banner -------------------------------------------------------- */}
+      <div
+        className={cx(
+          "group relative h-32 sm:h-40",
+          !profile.bannerImage && "bg-gradient-to-br from-brand-soft to-uncertain-soft"
+        )}
+        style={profile.bannerImage ? { backgroundImage: `url(${profile.bannerImage})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
+      >
+        {isMe && (
+          <button
+            onClick={() => bannerInputRef.current?.click()}
+            className="focus-ring absolute bottom-2 right-2 flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5 text-[12px] font-medium text-white backdrop-blur-sm transition-opacity hover:bg-black/70 sm:opacity-0 sm:group-hover:opacity-100"
+          >
+            <Camera size={13} />
+            Edit banner
+          </button>
+        )}
+        <input ref={bannerInputRef} type="file" accept="image/*" className="hidden" onChange={pickBannerFile} />
+      </div>
 
       <div className="px-4">
         <div className="-mt-10 flex items-end justify-between">
-          <Avatar user={profile} size="xl" className="border-4 border-bg" />
+          <div className="relative">
+            <Avatar user={profile} size="xl" className="border-4 border-bg" />
+            {isMe && (
+              <button
+                onClick={() => avatarInputRef.current?.click()}
+                className="focus-ring absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full border-2 border-bg bg-brand text-white hover:opacity-90"
+                aria-label="Change profile photo"
+              >
+                <Camera size={14} />
+              </button>
+            )}
+            <input ref={avatarInputRef} type="file" accept="image/*" className="hidden" onChange={pickAvatarFile} />
+          </div>
           {isMe ? (
             <Button variant="outline" onClick={() => setEditOpen(true)} className="mb-2">
               Edit profile
@@ -182,7 +248,7 @@ export default function Profile() {
       ) : posts.length === 0 ? (
         <EmptyState title={`No ${tab.toLowerCase()} yet`} description={isMe ? "What you post here will show up for others too." : "Nothing to show yet."} />
       ) : (
-        posts.map((p) => <PostCard key={p.id} post={p} onLike={handleLike} onRepost={handleRepost} />)
+        posts.map((p) => <PostCard key={p.id} post={p} onLike={handleLike} onRepost={handleRepost} onDelete={handleDelete} />)
       )}
 
       <Modal open={editOpen} onClose={() => setEditOpen(false)}>
@@ -219,6 +285,15 @@ export default function Profile() {
           </div>
         </div>
       </Modal>
+
+      <ImageCropModal
+        open={!!cropFile}
+        file={cropFile}
+        shape={cropShape}
+        title={cropShape === "circle" ? "Adjust profile photo" : "Adjust banner image"}
+        onCancel={() => setCropFile(null)}
+        onConfirm={handleCropConfirm}
+      />
     </div>
   );
 }

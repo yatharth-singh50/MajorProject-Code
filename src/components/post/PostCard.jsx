@@ -1,19 +1,25 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BadgeCheck, ChevronDown, Languages } from "lucide-react";
+import { BadgeCheck, ChevronDown, Languages, Trash2 } from "lucide-react";
 import Avatar from "../common/Avatar";
 import VerdictStamp from "./VerdictStamp";
 import AnalysisPanel from "./AnalysisPanel";
 import ActionBar from "./ActionBar";
+import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import { timeAgo, cx } from "../../utils/format";
 
-export default function PostCard({ post, onLike, onRepost, interactive = true, defaultExpanded = false }) {
+export default function PostCard({ post, onLike, onRepost, onDelete, interactive = true, defaultExpanded = false }) {
   const [showTranslation, setShowTranslation] = useState(false);
   const [expanded, setExpanded] = useState(defaultExpanded);
+  const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
+  const { user: me } = useAuth();
+  const { push } = useToast();
 
   if (!post) return null;
   const { author, content, translation, language, createdAt, analysis } = post;
+  const isOwnPost = me?.id === post.authorId;
 
   const openPost = () => interactive && navigate(`/post/${post.id}`);
   const openProfile = (e) => {
@@ -21,12 +27,28 @@ export default function PostCard({ post, onLike, onRepost, interactive = true, d
     navigate(`/profile/${author.username}`);
   };
 
+  const handleDeleteClick = async (e) => {
+    e.stopPropagation();
+    if (deleting) return;
+    if (!window.confirm("Delete this post? This can't be undone.")) return;
+
+    setDeleting(true);
+    try {
+      await onDelete?.(post.id);
+      push("Post deleted");
+    } catch (err) {
+      push(err.message || "Couldn't delete the post");
+      setDeleting(false);
+    }
+  };
+
   return (
     <article
       onClick={openPost}
       className={cx(
         "border-b border-border px-4 py-3.5 transition-colors",
-        interactive && "cursor-pointer hover:bg-surface-hover/60"
+        interactive && "cursor-pointer hover:bg-surface-hover/60",
+        deleting && "opacity-50"
       )}
     >
       <div className="flex gap-3">
@@ -45,6 +67,18 @@ export default function PostCard({ post, onLike, onRepost, interactive = true, d
             <span className="truncate text-text-faint">@{author.username}</span>
             <span className="text-text-faint">·</span>
             <span className="shrink-0 text-text-faint">{timeAgo(createdAt)}</span>
+
+            {isOwnPost && onDelete && (
+              <button
+                onClick={handleDeleteClick}
+                disabled={deleting}
+                className="focus-ring ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-faint hover:bg-fake-soft hover:text-fake"
+                aria-label="Delete post"
+                title="Delete post"
+              >
+                <Trash2 size={14} strokeWidth={1.8} />
+              </button>
+            )}
           </div>
 
           <p className="mt-0.5 whitespace-pre-wrap break-words text-[15px] leading-normal text-text">

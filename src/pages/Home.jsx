@@ -12,7 +12,10 @@ const TABS = ["For you", "Following"];
 
 export default function Home() {
   const [tab, setTab] = useState("For you");
-  const { posts, prependPost, handleLike, handleRepost } = usePostList(() => getFeed({ limit: 30 }), []);
+  const { posts, prependPost, handleLike, handleRepost, handleDelete } = usePostList(
+    () => getFeed({ limit: 30 }),
+    []
+  );
 
   // New top-level posts can come from this page's own composer *or* the
   // global "Post" button in the sidebar/modal — subscribe once so either
@@ -65,7 +68,7 @@ export default function Home() {
         <EmptyState title="No posts yet" description="Be the first to post something." />
       ) : (
         posts.map((post) => (
-          <PostCard key={post.id} post={post} onLike={handleLike} onRepost={handleRepost} />
+          <PostCard key={post.id} post={post} onLike={handleLike} onRepost={handleRepost} onDelete={handleDelete} />
         ))
       )}
     </div>

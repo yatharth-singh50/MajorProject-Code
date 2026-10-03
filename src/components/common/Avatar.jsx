@@ -9,6 +9,17 @@ const SIZES = {
 
 export default function Avatar({ user, size = "md", className = "" }) {
   if (!user) return <div className={cx(SIZES[size], "rounded-full bg-bg-inset", className)} />;
+
+  if (user.avatarImage) {
+    return (
+      <img
+        src={user.avatarImage}
+        alt={user.displayName || user.username}
+        className={cx(SIZES[size], "shrink-0 rounded-full object-cover select-none", className)}
+      />
+    );
+  }
+
   return (
     <div
       className={cx(

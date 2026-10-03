@@ -1,25 +1,29 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Trash2 } from "lucide-react";
 import Avatar from "../components/common/Avatar";
-import VerdictStamp from "../components/post/VerdictStamp";
 import AnalysisPanel from "../components/post/AnalysisPanel";
 import ActionBar from "../components/post/ActionBar";
 import ComposeBox from "../components/post/ComposeBox";
 import PostCard from "../components/post/PostCard";
 import { PostSkeleton } from "../components/common/Skeleton";
 import EmptyState from "../components/common/EmptyState";
-import { getPost, toggleLike, toggleRepost, onPostUpdated } from "../services/api";
+import { getPost, toggleLike, toggleRepost, deletePost, onPostUpdated, onPostDeleted } from "../services/api";
 import { usePostList } from "../hooks/usePostList";
 import { getReplies } from "../services/api";
+import { useAuth } from "../context/AuthContext";
+import { useToast } from "../context/ToastContext";
 import { fullDate, timeAgo, cx } from "../utils/format";
 
 export default function PostDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user: me } = useAuth();
+  const { push } = useToast();
   const [post, setPost] = useState(null);
   const [showTranslation, setShowTranslation] = useState(false);
-  const { posts: replies, prependPost, handleLike: likeReply, handleRepost: repostReply } = usePostList(
+  const [deleting, setDeleting] = useState(false);
+  const { posts: replies, prependPost, handleLike: likeReply, handleRepost: repostReply, handleDelete: deleteReply } = usePostList(
     () => getReplies(id),
     [id]
   );
@@ -34,6 +38,15 @@ export default function PostDetail() {
       if (updated.id === id) setPost(updated);
     });
   }, [id]);
+
+  // If this post gets deleted from elsewhere (another tab, or its author
+  // deleting a parent post that cascades down to this one), leave the page
+  // rather than showing a stale/broken detail view.
+  useEffect(() => {
+    return onPostDeleted((ids) => {
+      if (ids.includes(id)) navigate("/", { replace: true });
+    });
+  }, [id, navigate]);
 
   const handleLike = useCallback(async () => {
     setPost((p) => ({
@@ -55,13 +68,40 @@ export default function PostDetail() {
     setPost((p) => ({ ...p, ...updated }));
   }, [id]);
 
+  const handleDeletePost = async () => {
+    if (deleting) return;
+    if (!window.confirm("Delete this post? This can't be undone.")) return;
+    setDeleting(true);
+    try {
+      await deletePost(id);
+      push("Post deleted");
+      navigate("/", { replace: true });
+    } catch (err) {
+      push(err.message || "Couldn't delete the post");
+      setDeleting(false);
+    }
+  };
+
+  const isOwnPost = post && me?.id === post.authorId;
+
   return (
     <div>
       <header className="sticky top-0 z-10 flex items-center gap-5 border-b border-border bg-bg/85 px-3 py-2.5 backdrop-blur">
         <button onClick={() => navigate(-1)} className="focus-ring flex h-9 w-9 items-center justify-center rounded-full hover:bg-surface-hover" aria-label="Back">
           <ArrowLeft size={18} />
         </button>
-        <h1 className="font-serif text-lg font-semibold text-text">Post</h1>
+        <h1 className="flex-1 font-serif text-lg font-semibold text-text">Post</h1>
+        {isOwnPost && (
+          <button
+            onClick={handleDeletePost}
+            disabled={deleting}
+            className="focus-ring flex h-9 w-9 items-center justify-center rounded-full text-text-faint hover:bg-fake-soft hover:text-fake"
+            aria-label="Delete post"
+            title="Delete post"
+          >
+            <Trash2 size={17} strokeWidth={1.8} />
+          </button>
+        )}
       </header>
 
       {!post ? (
@@ -124,7 +164,7 @@ export default function PostDetail() {
             <EmptyState title="No replies yet" description="Replies will appear here once people join the conversation." />
           ) : (
             replies.map((reply) => (
-              <PostCard key={reply.id} post={reply} onLike={likeReply} onRepost={repostReply} />
+              <PostCard key={reply.id} post={reply} onLike={likeReply} onRepost={repostReply} onDelete={deleteReply} />
             ))
           )}
         </>

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { ShieldCheck } from "lucide-react";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
@@ -10,6 +10,8 @@ import Profile from "./pages/Profile";
 import Settings from "./pages/Settings";
 import Notifications from "./pages/Notifications";
 import Search from "./pages/Search";
+import SignIn from "./pages/SignIn";
+import SignUp from "./pages/SignUp";
 
 function Splash() {
   return (
@@ -25,12 +27,51 @@ function Gate({ children }) {
   return children;
 }
 
+// Protects the main app -- bounces signed-out visitors to /signin and
+// remembers where they were headed so they land back there after signing in.
+function RequireAuth({ children }) {
+  const { user } = useAuth();
+  const location = useLocation();
+  if (!user) return <Navigate to="/signin" state={{ from: location }} replace />;
+  return children;
+}
+
+// Keeps a signed-in user from seeing the sign-in/sign-up forms again.
+function RedirectIfAuthed({ children }) {
+  const { user } = useAuth();
+  if (user) return <Navigate to="/" replace />;
+  return children;
+}
+
 function Router() {
   return (
     <BrowserRouter>
       <Gate>
         <Routes>
-          <Route element={<AppShell />}>
+          <Route
+            path="/signin"
+            element={
+              <RedirectIfAuthed>
+                <SignIn />
+              </RedirectIfAuthed>
+            }
+          />
+          <Route
+            path="/signup"
+            element={
+              <RedirectIfAuthed>
+                <SignUp />
+              </RedirectIfAuthed>
+            }
+          />
+
+          <Route
+            element={
+              <RequireAuth>
+                <AppShell />
+              </RequireAuth>
+            }
+          >
             <Route path="/" element={<Home />} />
             <Route path="/post/:id" element={<PostDetail />} />
             <Route path="/profile/:username" element={<Profile />} />

@@ -77,6 +77,7 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
 
 const createdListeners = new Set();
 const updatedListeners = new Set();
+const deletedListeners = new Set();
 
 let socket = null;
 let reconnectTimer = null;
@@ -103,13 +104,15 @@ function ensureSocket() {
       createdListeners.forEach((cb) => cb(msg.post));
     } else if (msg.type === "post_updated") {
       updatedListeners.forEach((cb) => cb(msg.post));
+    } else if (msg.type === "post_deleted") {
+      deletedListeners.forEach((cb) => cb(msg.ids));
     }
   };
 
   socket.onclose = () => {
     socket = null;
     // Only bother reconnecting while someone's still listening.
-    if ((createdListeners.size > 0 || updatedListeners.size > 0) && !reconnectTimer) {
+    if ((createdListeners.size > 0 || updatedListeners.size > 0 || deletedListeners.size > 0) && !reconnectTimer) {
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         ensureSocket();
@@ -134,6 +137,14 @@ export function onPostUpdated(cb) {
   return () => updatedListeners.delete(cb);
 }
 
+// cb receives an array of deleted post ids (a delete cascades to replies,
+// so more than one id can disappear from a single delete).
+export function onPostDeleted(cb) {
+  deletedListeners.add(cb);
+  ensureSocket();
+  return () => deletedListeners.delete(cb);
+}
+
 // ---- Auth / current user ---------------------------------------------------
 
 export async function getCurrentUser() {
@@ -141,8 +152,9 @@ export async function getCurrentUser() {
   return request("/auth/me");
 }
 
-export async function login(username, password) {
-  const data = await request("/auth/login", { method: "POST", body: { username, password }, auth: false });
+export async function login(identifier, password) {
+  // `identifier` can be a username OR an email -- the backend accepts either.
+  const data = await request("/auth/login", { method: "POST", body: { identifier, password }, auth: false });
   setAuthToken(data.access_token);
   return data.user;
 }
@@ -192,6 +204,13 @@ export async function createPost({ content, languageCode = null, parentId = null
   // through the update bus itself. The real backend does that server-side
   // (background task) and pushes the analyzed post over the WebSocket as a
   // `post_updated` event once it's done — no extra call needed here.
+}
+
+export async function deletePost(postId) {
+  return request(`/posts/${postId}`, { method: "DELETE" });
+  // Returns null (204 No Content). A delete cascades to replies on the
+  // backend and broadcasts a `post_deleted` WS event with every id removed
+  // -- see onPostDeleted above -- so other open views update automatically.
 }
 
 // ---- Engagement ---------------------------------------------------------
