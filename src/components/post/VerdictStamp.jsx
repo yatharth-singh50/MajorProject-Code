@@ -32,6 +32,10 @@ const CONFIG = {
 };
 
 export default function VerdictStamp({ verdict, status = "analyzed", size = "sm", className = "" }) {
+  // Replies are never analyzed (see ml_pipeline.py) -- nothing honest to
+  // stamp, so render nothing rather than guessing a verdict from a null one.
+  if (status === "skipped") return null;
+
   if (status === "processing") {
     return (
       <span

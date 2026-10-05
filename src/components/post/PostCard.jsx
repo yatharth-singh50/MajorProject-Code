@@ -18,8 +18,14 @@ export default function PostCard({ post, onLike, onRepost, onDelete, interactive
   const { push } = useToast();
 
   if (!post) return null;
-  const { author, content, translation, language, createdAt, analysis } = post;
+  const { author, content, translation, language, createdAt, analysis, media } = post;
   const isOwnPost = me?.id === post.authorId;
+  // Replies never go through the fact-checking pipeline (see
+  // ml_pipeline.py / routers/posts.py) -- their analysis.status is
+  // permanently "skipped", so there's nothing to show a stamp or
+  // verification panel for.
+  const isAnalyzable = analysis.status !== "skipped";
+  const mediaSrc = media?.dataBase64 ? `data:${media.mimeType};base64,${media.dataBase64}` : media?.url;
 
   const openPost = () => interactive && navigate(`/post/${post.id}`);
   const openProfile = (e) => {
@@ -98,21 +104,29 @@ export default function PostCard({ post, onLike, onRepost, onDelete, interactive
             </button>
           )}
 
-          <div className="mt-2.5 flex flex-wrap items-center gap-2">
-            <VerdictStamp verdict={analysis.verdict} status={analysis.status} />
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setExpanded((s) => !s);
-              }}
-              className="focus-ring flex items-center gap-1 rounded-full px-2 py-1 text-[11px] text-text-faint hover:bg-surface-hover hover:text-text-dim"
-            >
-              {expanded ? "Hide details" : "Verification details"}
-              <ChevronDown size={12} className={cx("transition-transform", expanded && "rotate-180")} />
-            </button>
-          </div>
+          {mediaSrc && (
+            <div className="mt-2.5 overflow-hidden rounded-xl border border-border">
+              <img src={mediaSrc} alt="" className="max-h-96 w-full object-cover" loading="lazy" />
+            </div>
+          )}
 
-          {expanded && (
+          {isAnalyzable && (
+            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+              <VerdictStamp verdict={analysis.verdict} status={analysis.status} />
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setExpanded((s) => !s);
+                }}
+                className="focus-ring flex items-center gap-1 rounded-full px-2 py-1 text-[11px] text-text-faint hover:bg-surface-hover hover:text-text-dim"
+              >
+                {expanded ? "Hide details" : "Verification details"}
+                <ChevronDown size={12} className={cx("transition-transform", expanded && "rotate-180")} />
+              </button>
+            </div>
+          )}
+
+          {isAnalyzable && expanded && (
             <div onClick={(e) => e.stopPropagation()} className="mt-2.5">
               <AnalysisPanel analysis={analysis} language={language} />
             </div>

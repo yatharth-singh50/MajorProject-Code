@@ -129,6 +129,16 @@ export default function PostDetail() {
               </button>
             )}
 
+            {(post.media?.dataBase64 || post.media?.url) && (
+              <div className="mt-3.5 overflow-hidden rounded-xl border border-border">
+                <img
+                  src={post.media.dataBase64 ? `data:${post.media.mimeType};base64,${post.media.dataBase64}` : post.media.url}
+                  alt=""
+                  className="max-h-[32rem] w-full object-cover"
+                />
+              </div>
+            )}
+
             <p className="mt-3.5 text-[14px] text-text-faint">{fullDate(post.createdAt)}</p>
 
             <div className="mt-3.5 flex items-center gap-3 border-y border-border py-3 text-[14px] text-text-dim">
@@ -141,9 +151,11 @@ export default function PostDetail() {
               <ActionBar post={post} onLike={handleLike} onRepost={handleRepost} onReply={() => {}} />
             </div>
 
-            <div className="mt-3">
-              <AnalysisPanel analysis={post.analysis} language={post.language} />
-            </div>
+            {post.analysis.status !== "skipped" && (
+              <div className="mt-3">
+                <AnalysisPanel analysis={post.analysis} language={post.language} />
+              </div>
+            )}
           </div>
 
           <div className="border-b border-border">

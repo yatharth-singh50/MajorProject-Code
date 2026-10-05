@@ -189,7 +189,14 @@ export async function getReplies(postId) {
 
 // ---- Creating content ---------------------------------------------------
 
-export async function createPost({ content, languageCode = null, parentId = null, imageBase64 = null, imageMimeType = null }) {
+export async function createPost({
+  content,
+  languageCode = null,
+  parentId = null,
+  imageBase64 = null,
+  imageMimeType = null,
+  gifUrl = null,
+}) {
   return request("/posts", {
     method: "POST",
     body: {
@@ -198,6 +205,7 @@ export async function createPost({ content, languageCode = null, parentId = null
       parentId,
       image_base64: imageBase64,
       image_mime_type: imageMimeType,
+      gif_url: gifUrl,
     },
   });
   // Note: the mock version also fired `runPipeline()` and pushed the result
@@ -250,6 +258,13 @@ export async function getTrending() {
 export async function searchAll(query) {
   if (!query.trim()) return { posts: [], users: [] };
   return request(`/search?q=${encodeURIComponent(query)}`, { auth: false });
+}
+
+// ---- GIF search (compose box picker) ---------------------------------------
+
+export async function searchGifs(query) {
+  return request(`/gifs/search?q=${encodeURIComponent(query)}`, { auth: false });
+  // -> { results: [{id, url, previewUrl, title}], configured: bool }
 }
 
 // ---- Notifications ----------------------------------------------------------

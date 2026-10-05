@@ -1,5 +1,6 @@
+import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { Home, Search, Bell, User, Settings, Feather, MoreHorizontal, ShieldCheck } from "lucide-react";
+import { Home, Search, Bell, User, Settings, Feather, MoreHorizontal, ShieldCheck, LogOut } from "lucide-react";
 import Avatar from "../common/Avatar";
 import Button from "../common/Button";
 import { useAuth } from "../../context/AuthContext";
@@ -13,8 +14,33 @@ const NAV = [
 ];
 
 export default function Sidebar({ onCompose }) {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  // Close on outside click / Escape -- standard popover behavior.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    const handleKey = (e) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [menuOpen]);
+
+  const handleLogout = () => {
+    setMenuOpen(false);
+    logout();
+    navigate("/signin", { replace: true });
+  };
 
   return (
     <aside className="sticky top-0 flex h-screen w-[76px] shrink-0 flex-col justify-between border-r border-border px-2 py-3 xl:w-[260px] xl:px-4">
@@ -71,17 +97,59 @@ export default function Sidebar({ onCompose }) {
       </div>
 
       {user && (
-        <button
-          onClick={() => navigate(`/profile/${user.username}`)}
-          className="focus-ring flex items-center gap-2.5 rounded-full p-1.5 hover:bg-surface-hover xl:w-full"
-        >
-          <Avatar user={user} size="md" />
-          <div className="hidden min-w-0 flex-1 text-left xl:block">
-            <p className="truncate text-[14px] font-semibold text-text">{user.displayName}</p>
-            <p className="truncate text-[13px] text-text-faint">@{user.username}</p>
-          </div>
-          <MoreHorizontal size={18} className="hidden text-text-faint xl:block" />
-        </button>
+        <div ref={menuRef} className="relative">
+          {menuOpen && (
+            <div className="absolute bottom-full left-0 z-20 mb-2 w-56 overflow-hidden rounded-xl border border-border bg-surface py-1.5 shadow-xl shadow-black/20">
+              <div className="px-3 py-2">
+                <p className="truncate text-[14px] font-semibold text-text">{user.displayName}</p>
+                <p className="truncate text-[13px] text-text-faint">@{user.username}</p>
+              </div>
+              <div className="my-1 border-t border-border" />
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  navigate(`/profile/${user.username}`);
+                }}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[14px] text-text-dim hover:bg-surface-hover"
+              >
+                <User size={16} />
+                Go to profile
+              </button>
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  navigate("/settings");
+                }}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[14px] text-text-dim hover:bg-surface-hover"
+              >
+                <Settings size={16} />
+                Settings
+              </button>
+              <div className="my-1 border-t border-border" />
+              <button
+                onClick={handleLogout}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[14px] text-fake hover:bg-fake-soft"
+              >
+                <LogOut size={16} />
+                Log out
+              </button>
+            </div>
+          )}
+
+          <button
+            onClick={() => setMenuOpen((s) => !s)}
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            className="focus-ring flex w-full items-center gap-2.5 rounded-full p-1.5 hover:bg-surface-hover"
+          >
+            <Avatar user={user} size="md" />
+            <div className="hidden min-w-0 flex-1 text-left xl:block">
+              <p className="truncate text-[14px] font-semibold text-text">{user.displayName}</p>
+              <p className="truncate text-[13px] text-text-faint">@{user.username}</p>
+            </div>
+            <MoreHorizontal size={18} className="hidden text-text-faint xl:block" />
+          </button>
+        </div>
       )}
     </aside>
   );
