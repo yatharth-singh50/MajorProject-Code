@@ -57,7 +57,7 @@ export default function PostCard({ post, onLike, onRepost, onDelete, interactive
         deleting && "opacity-50"
       )}
     >
-      <div className="flex gap-3">
+      <div className="flex items-start gap-3">
         <button onClick={openProfile} className="focus-ring shrink-0 rounded-full">
           <Avatar user={author} />
         </button>
