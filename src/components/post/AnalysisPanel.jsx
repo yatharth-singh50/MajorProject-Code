@@ -149,10 +149,23 @@ export default function AnalysisPanel({ analysis, language, className = "" }) {
               <ul className="space-y-1.5">
                 {matchedClaims.map((c, i) => (
                   <li key={i} className="flex items-center justify-between gap-3 text-xs">
-                    <span className="flex items-center gap-1.5 text-text-dim">
-                      <ExternalLink size={11} className="shrink-0 text-text-faint" />
-                      {c.title}
-                    </span>
+                    {c.url ? (
+                      <a
+                        href={c.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="flex min-w-0 items-center gap-1.5 text-text-dim hover:text-brand hover:underline"
+                      >
+                        <ExternalLink size={11} className="shrink-0 text-text-faint" />
+                        <span className="truncate">{c.title}</span>
+                      </a>
+                    ) : (
+                      <span className="flex min-w-0 items-center gap-1.5 text-text-dim">
+                        <ExternalLink size={11} className="shrink-0 text-text-faint" />
+                        <span className="truncate">{c.title}</span>
+                      </span>
+                    )}
                     <span
                       className={cx(
                         "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
