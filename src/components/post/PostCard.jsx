@@ -1,15 +1,30 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BadgeCheck, ChevronDown, Languages, Trash2 } from "lucide-react";
+import { ChevronDown, Languages, Trash2, Newspaper } from "lucide-react";
 import Avatar from "../common/Avatar";
-import VerdictStamp from "./VerdictStamp";
+import VerifiedBadge from "../common/VerifiedBadge";
+import OverallVerdictBadge from "./OverallVerdictBadge";
 import AnalysisPanel from "./AnalysisPanel";
 import ActionBar from "./ActionBar";
+import MediaGrid from "./MediaGrid";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { timeAgo, cx } from "../../utils/format";
 
-export default function PostCard({ post, onLike, onRepost, onDelete, interactive = true, defaultExpanded = false }) {
+/**
+ * onReply(post): optional. When given, the reply button calls it (the thread
+ * view uses this to open an inline composer under that exact comment);
+ * otherwise it just opens the post.
+ */
+export default function PostCard({
+  post,
+  onLike,
+  onRepost,
+  onDelete,
+  onReply,
+  interactive = true,
+  defaultExpanded = false,
+}) {
   const [showTranslation, setShowTranslation] = useState(false);
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [deleting, setDeleting] = useState(false);
@@ -18,14 +33,17 @@ export default function PostCard({ post, onLike, onRepost, onDelete, interactive
   const { push } = useToast();
 
   if (!post) return null;
-  const { author, content, translation, language, createdAt, analysis, media } = post;
-  const isOwnPost = me?.id === post.authorId;
-  // Replies never go through the fact-checking pipeline (see
-  // ml_pipeline.py / routers/posts.py) -- their analysis.status is
-  // permanently "skipped", so there's nothing to show a stamp or
-  // verification panel for.
+  const { author, content, translation, language, createdAt, analysis, attachments } = post;
+
+  // You can delete your own posts; site admins can delete anyone's.
+  const canDelete = me?.id === post.authorId || me?.isAdmin;
+
+  // Only news posts from ordinary accounts are fact-checked. Replies, plain
+  // posts, and posts from verified news/government accounts are "skipped" --
+  // nothing honest to put a verdict on, so no badge.
   const isAnalyzable = analysis.status !== "skipped";
-  const mediaSrc = media?.dataBase64 ? `data:${media.mimeType};base64,${media.dataBase64}` : media?.url;
+  const officialSource =
+    !isAnalyzable && post.isNews && ["news", "government"].includes(author.verificationTier);
 
   const openPost = () => interactive && navigate(`/post/${post.id}`);
   const openProfile = (e) => {
@@ -36,7 +54,8 @@ export default function PostCard({ post, onLike, onRepost, onDelete, interactive
   const handleDeleteClick = async (e) => {
     e.stopPropagation();
     if (deleting) return;
-    if (!window.confirm("Delete this post? This can't be undone.")) return;
+    const others = me?.id !== post.authorId;
+    if (!window.confirm(others ? "Delete this user's post as an admin? This can't be undone." : "Delete this post? This can't be undone.")) return;
 
     setDeleting(true);
     try {
@@ -67,20 +86,18 @@ export default function PostCard({ post, onLike, onRepost, onDelete, interactive
             <button onClick={openProfile} className="focus-ring truncate font-semibold text-text hover:underline">
               {author.displayName}
             </button>
-            {author.platformVerified && (
-              <BadgeCheck size={15} className="shrink-0 fill-brand text-bg" strokeWidth={0} />
-            )}
+            <VerifiedBadge user={author} />
             <span className="truncate text-text-faint">@{author.username}</span>
             <span className="text-text-faint">·</span>
             <span className="shrink-0 text-text-faint">{timeAgo(createdAt)}</span>
 
-            {isOwnPost && onDelete && (
+            {canDelete && onDelete && (
               <button
                 onClick={handleDeleteClick}
                 disabled={deleting}
                 className="focus-ring ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-faint hover:bg-fake-soft hover:text-fake"
                 aria-label="Delete post"
-                title="Delete post"
+                title={me?.id === post.authorId ? "Delete post" : "Delete post (admin)"}
               >
                 <Trash2 size={14} strokeWidth={1.8} />
               </button>
@@ -104,15 +121,15 @@ export default function PostCard({ post, onLike, onRepost, onDelete, interactive
             </button>
           )}
 
-          {mediaSrc && (
-            <div className="mt-2.5 overflow-hidden rounded-xl border border-border">
-              <img src={mediaSrc} alt="" className="max-h-96 w-full object-cover" loading="lazy" />
-            </div>
-          )}
+          <MediaGrid attachments={attachments} className="mt-2.5" />
 
           {isAnalyzable && (
             <div className="mt-2.5 flex flex-wrap items-center gap-2">
-              <VerdictStamp verdict={analysis.verdict} status={analysis.status} />
+              <OverallVerdictBadge
+                assessment={analysis.overallAssessment}
+                verificationStatus={analysis.verificationStatus}
+                status={analysis.status}
+              />
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -126,6 +143,14 @@ export default function PostCard({ post, onLike, onRepost, onDelete, interactive
             </div>
           )}
 
+          {officialSource && (
+            <p className="mt-2.5 flex items-center gap-1.5 text-[12px] text-text-faint">
+              <Newspaper size={12} />
+              Official {author.verificationTier === "government" ? "government" : "news"} source — not run through
+              the fact-checker
+            </p>
+          )}
+
           {isAnalyzable && expanded && (
             <div onClick={(e) => e.stopPropagation()} className="mt-2.5">
               <AnalysisPanel analysis={analysis} language={language} />
@@ -133,7 +158,12 @@ export default function PostCard({ post, onLike, onRepost, onDelete, interactive
           )}
 
           <div className="mt-2.5" onClick={(e) => e.stopPropagation()}>
-            <ActionBar post={post} onLike={() => onLike?.(post.id)} onRepost={() => onRepost?.(post.id)} onReply={openPost} />
+            <ActionBar
+              post={post}
+              onLike={() => onLike?.(post.id)}
+              onRepost={() => onRepost?.(post.id)}
+              onReply={onReply ? () => onReply(post) : openPost}
+            />
           </div>
         </div>
       </div>

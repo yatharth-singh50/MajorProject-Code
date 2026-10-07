@@ -1,29 +1,37 @@
 import { Check, TriangleAlert, CircleHelp, Loader2 } from "lucide-react";
 import { cx } from "../../utils/format";
 
-// THE primary verdict badge shown on a post -- driven by the backend's
-// weighted overallAssessment (model classification + live evidence
-// reconciled, with evidence taking precedence when it's decisive), NOT the
-// raw MuRIL-only prediction. MuRIL alone only detects writing-style
-// patterns and is trivially fooled by a formally-worded false claim --
-// showing its opinion as the main badge regardless of what live evidence
-// found was a real, reported UX bug. The model-only verdict is still
-// visible, clearly labeled "Model:", inside the expanded "Model
-// classification" section (see VerdictStamp.jsx) -- it just isn't the
-// headline claim anymore.
-const CONFIG = {
-  real: { label: "Likely real", Icon: Check, color: "text-real", border: "border-real/40", bg: "bg-real-soft" },
-  fake: { label: "Likely fake", Icon: TriangleAlert, color: "text-fake", border: "border-fake/40", bg: "bg-fake-soft" },
-  uncertain: {
-    label: "Uncertain",
-    Icon: CircleHelp,
-    color: "text-uncertain",
-    border: "border-uncertain/40",
-    bg: "bg-uncertain-soft",
-  },
+// THE headline badge on a post. Driven by the backend's overallAssessment
+// (live evidence decides; the MuRIL text-pattern prediction never does).
+// It is deliberately NOT the raw model verdict -- MuRIL only sees writing
+// style and is easily fooled by a formally worded false claim.
+//
+// "uncertain" is shown in plain words instead of a percentage, because a
+// number like "35%" means nothing to a reader:
+//   - nothing found / never checked  -> "Unverified · may be fake"
+//   - evidence conflicts             -> "Disputed"
+const STYLE = {
+  real: { Icon: Check, color: "text-real", border: "border-real/40", bg: "bg-real-soft" },
+  fake: { Icon: TriangleAlert, color: "text-fake", border: "border-fake/40", bg: "bg-fake-soft" },
+  uncertain: { Icon: CircleHelp, color: "text-uncertain", border: "border-uncertain/40", bg: "bg-uncertain-soft" },
 };
 
-export default function OverallVerdictBadge({ assessment, status = "analyzed", size = "sm", className = "" }) {
+export function overallLabel(assessment, verificationStatus) {
+  if (!assessment) return "";
+  if (assessment.label === "real") return `Likely real · ${Math.round(assessment.confidence * 100)}%`;
+  if (assessment.label === "fake") return `Likely fake · ${Math.round(assessment.confidence * 100)}%`;
+  return verificationStatus === "mixed" ? "Disputed" : "Unverified · may be fake";
+}
+
+export default function OverallVerdictBadge({
+  assessment,
+  verificationStatus,
+  status = "analyzed",
+  size = "sm",
+  className = "",
+}) {
+  if (status === "skipped") return null;
+
   if (status === "processing") {
     return (
       <span
@@ -39,10 +47,9 @@ export default function OverallVerdictBadge({ assessment, status = "analyzed", s
     );
   }
 
-  // Shouldn't normally happen once status is "analyzed" -- defensive only.
   if (!assessment) return null;
 
-  const cfg = CONFIG[assessment.label] ?? CONFIG.uncertain;
+  const cfg = STYLE[assessment.label] ?? STYLE.uncertain;
   const { Icon } = cfg;
 
   return (
@@ -57,7 +64,7 @@ export default function OverallVerdictBadge({ assessment, status = "analyzed", s
       )}
     >
       <Icon size={size === "lg" ? 15 : 12} strokeWidth={2.2} />
-      {cfg.label} · {Math.round(assessment.confidence * 100)}%
+      {overallLabel(assessment, verificationStatus)}
     </span>
   );
 }

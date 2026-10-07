@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Search as SearchIcon, BadgeCheck } from "lucide-react";
+import { Search as SearchIcon } from "lucide-react";
 import Avatar from "../components/common/Avatar";
+import VerifiedBadge from "../components/common/VerifiedBadge";
 import PostCard from "../components/post/PostCard";
 import { PostSkeleton } from "../components/common/Skeleton";
 import EmptyState from "../components/common/EmptyState";
@@ -92,7 +93,7 @@ export default function Search() {
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-1 truncate font-semibold text-text">
                       {u.displayName}
-                      {u.platformVerified && <BadgeCheck size={14} className="fill-brand text-bg" strokeWidth={0} />}
+                      <VerifiedBadge user={u} size={14} />
                     </p>
                     <p className="truncate text-[13px] text-text-faint">@{u.username}</p>
                   </div>

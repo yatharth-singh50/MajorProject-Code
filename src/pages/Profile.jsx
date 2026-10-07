@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, CalendarDays, MapPin, BadgeCheck, Camera } from "lucide-react";
+import { ArrowLeft, CalendarDays, MapPin, Camera, ShieldCheck } from "lucide-react";
 import Avatar from "../components/common/Avatar";
+import VerifiedBadge, { TIER_OPTIONS } from "../components/common/VerifiedBadge";
 import Button from "../components/common/Button";
 import Modal from "../components/common/Modal";
 import ImageCropModal from "../components/common/ImageCropModal";
 import PostCard from "../components/post/PostCard";
 import { PostSkeleton } from "../components/common/Skeleton";
 import EmptyState from "../components/common/EmptyState";
-import { getUserByUsername, getUserPosts } from "../services/api";
+import { getUserByUsername, getUserPosts, setUserVerification } from "../services/api";
 import { usePostList } from "../hooks/usePostList";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -70,10 +71,15 @@ export default function Profile() {
 
   const isMe = me?.username === username;
 
+  // Admin-only: grant/revoke this account's verification tier.
+  const [tierDraft, setTierDraft] = useState("");
+  const [savingTier, setSavingTier] = useState(false);
+
   useEffect(() => {
     setProfile(null);
     getUserByUsername(username).then((u) => {
       setProfile(u);
+      setTierDraft(u.verificationTier && u.verificationTier !== "admin" ? u.verificationTier : "");
       setForm({ displayName: u.displayName, bio: u.bio, location: u.location || "" });
     });
   }, [username]);
@@ -88,6 +94,19 @@ export default function Profile() {
     setProfile((p) => ({ ...p, ...updated }));
     setEditOpen(false);
     push("Profile updated");
+  };
+
+  const handleSaveTier = async () => {
+    setSavingTier(true);
+    try {
+      const updated = await setUserVerification(profile.username, tierDraft || null);
+      setProfile((p) => ({ ...p, ...updated }));
+      push(tierDraft ? "Verification updated" : "Verification removed");
+    } catch (err) {
+      push(err.message || "Couldn't update verification");
+    } finally {
+      setSavingTier(false);
+    }
   };
 
   const pickAvatarFile = (e) => {
@@ -190,7 +209,7 @@ export default function Profile() {
 
         <div className="mt-2 flex items-center gap-1.5">
           <h2 className="font-serif text-xl font-semibold text-text">{profile.displayName}</h2>
-          {profile.platformVerified && <BadgeCheck size={17} className="fill-brand text-bg" strokeWidth={0} />}
+          <VerifiedBadge user={profile} size={18} />
         </div>
         <p className="text-[14px] text-text-faint">@{profile.username}</p>
 
@@ -213,15 +232,62 @@ export default function Profile() {
           <span><strong className="text-text">{compactNumber(profile.followerCount)}</strong> <span className="text-text-faint">Followers</span></span>
         </div>
 
-        <div className="mt-4 flex items-center gap-3 rounded-2xl border border-border bg-bg-inset p-3">
-          <CredibilityRing score={profile.trustScore} />
-          <div>
-            <p className="text-[13px] font-semibold text-text">Credibility score</p>
-            <p className="text-[12px] leading-snug text-text-faint">
-              Share of this account's analyzed posts the model verified as real, not disputed.
+        {["news", "government"].includes(profile.verificationTier) ? (
+          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-border bg-bg-inset p-3">
+            <VerifiedBadge user={profile} size={30} />
+            <div>
+              <p className="text-[13px] font-semibold text-text">
+                {profile.verificationTier === "government" ? "Official government account" : "Verified news account"}
+              </p>
+              <p className="text-[12px] leading-snug text-text-faint">
+                Posts from verified {profile.verificationTier === "government" ? "government" : "news"} accounts aren't
+                run through the fact-checker, so they don't get a credibility score.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-border bg-bg-inset p-3">
+            <CredibilityRing score={profile.trustScore} />
+            <div>
+              <p className="text-[13px] font-semibold text-text">Credibility score</p>
+              <p className="text-[12px] leading-snug text-text-faint">
+                {profile.trustCount > 0
+                  ? `Based on ${profile.trustCount} fact-checked news post${profile.trustCount === 1 ? "" : "s"}: likely-real posts raise it, unverified ones count half, likely-fake ones lower it.`
+                  : isMe
+                    ? "Not scored yet. Tag a post as News and it's fact-checked — the results build this score."
+                    : "Not scored yet — this account hasn't posted any fact-checked news."}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {me?.isAdmin && !isMe && !profile.isAdmin && (
+          <div className="mt-3 rounded-2xl border border-border bg-bg-inset p-3">
+            <p className="mb-2 flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-text-faint">
+              <ShieldCheck size={13} className="text-brand" />
+              Admin · verification
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={tierDraft}
+                onChange={(e) => setTierDraft(e.target.value)}
+                className="focus-ring min-w-0 flex-1 rounded-lg border border-border bg-bg px-3 py-2 text-[14px] text-text"
+              >
+                {TIER_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <Button onClick={handleSaveTier} disabled={savingTier || (tierDraft || null) === (profile.verificationTier || null)}>
+                {savingTier ? "Saving…" : "Apply"}
+              </Button>
+            </div>
+            <p className="mt-2 text-[12px] leading-snug text-text-faint">
+              News and Government accounts skip the fact-checker entirely.
             </p>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="mt-1 flex border-b border-border">

@@ -17,6 +17,15 @@ export function usePostList(fetcher, deps = []) {
     reload();
   }, [reload]);
 
+  // Re-fetch in place, without blanking the list to a skeleton first -- for
+  // "something changed in this conversation" updates (a new reply landed).
+  const refresh = useCallback(() => {
+    fetcher()
+      .then(setPosts)
+      .catch((e) => setError(e.message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
   // Keep this list in sync with changes made elsewhere (a like tapped from
   // another view, an analysis result completing after a post left the
   // "processing" state, etc.) — no-ops if the id isn't in this list.
@@ -98,5 +107,5 @@ export function usePostList(fetcher, deps = []) {
     }
   }, [posts, removePost]);
 
-  return { posts, error, reload, patchPost, prependPost, removePost, handleLike, handleRepost, handleDelete };
+  return { posts, error, reload, refresh, patchPost, prependPost, removePost, handleLike, handleRepost, handleDelete };
 }

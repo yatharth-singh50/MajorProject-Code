@@ -36,10 +36,22 @@ export function clearAuthToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
 
+// ---- Media URLs -----------------------------------------------------------
+// Uploaded images/videos live at `/media/<id>` on the backend; GIFs from the
+// picker are absolute URLs; very old posts carry inline base64.
+export function mediaUrl(att) {
+  if (!att) return "";
+  if (att.dataBase64) return `data:${att.mimeType};base64,${att.dataBase64}`;
+  if (/^https?:\/\//i.test(att.url)) return att.url;
+  return `${API_BASE}${att.url}`;
+}
+
 // ---- Low-level request helper ------------------------------------------
 
-async function request(path, { method = "GET", body, auth = true } = {}) {
+async function request(path, { method = "GET", body, formData, auth = true } = {}) {
   const headers = {};
+  // For multipart uploads the browser must set the Content-Type itself (it
+  // adds the multipart boundary), so only JSON bodies get an explicit one.
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (auth) {
     const token = getAuthToken();
@@ -49,7 +61,7 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: formData ?? (body !== undefined ? JSON.stringify(body) : undefined),
   });
 
   if (res.status === 204) return null;
@@ -78,6 +90,7 @@ async function request(path, { method = "GET", body, auth = true } = {}) {
 const createdListeners = new Set();
 const updatedListeners = new Set();
 const deletedListeners = new Set();
+const notificationListeners = new Set();
 
 let socket = null;
 let reconnectTimer = null;
@@ -106,13 +119,15 @@ function ensureSocket() {
       updatedListeners.forEach((cb) => cb(msg.post));
     } else if (msg.type === "post_deleted") {
       deletedListeners.forEach((cb) => cb(msg.ids));
+    } else if (msg.type === "notification") {
+      notificationListeners.forEach((cb) => cb(msg.userId));
     }
   };
 
   socket.onclose = () => {
     socket = null;
     // Only bother reconnecting while someone's still listening.
-    if ((createdListeners.size > 0 || updatedListeners.size > 0 || deletedListeners.size > 0) && !reconnectTimer) {
+    if ((createdListeners.size > 0 || updatedListeners.size > 0 || deletedListeners.size > 0 || notificationListeners.size > 0) && !reconnectTimer) {
       reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         ensureSocket();
@@ -135,6 +150,14 @@ export function onPostUpdated(cb) {
   updatedListeners.add(cb);
   ensureSocket();
   return () => updatedListeners.delete(cb);
+}
+
+// cb receives the id of the user a new notification is for; callers compare
+// it to their own id (the server broadcasts to everyone, payload is tiny).
+export function onNotification(cb) {
+  notificationListeners.add(cb);
+  ensureSocket();
+  return () => notificationListeners.delete(cb);
 }
 
 // cb receives an array of deleted post ids (a delete cascades to replies,
@@ -193,25 +216,38 @@ export async function createPost({
   content,
   languageCode = null,
   parentId = null,
-  imageBase64 = null,
-  imageMimeType = null,
-  gifUrl = null,
+  mediaIds = [],
+  gifUrls = [],
+  isNews = false,
 }) {
   return request("/posts", {
     method: "POST",
-    body: {
-      content,
-      languageCode,
-      parentId,
-      image_base64: imageBase64,
-      image_mime_type: imageMimeType,
-      gif_url: gifUrl,
-    },
+    body: { content, languageCode, parentId, mediaIds, gifUrls, isNews },
   });
-  // Note: the mock version also fired `runPipeline()` and pushed the result
-  // through the update bus itself. The real backend does that server-side
-  // (background task) and pushes the analyzed post over the WebSocket as a
-  // `post_updated` event once it's done — no extra call needed here.
+  // The fact-check pipeline runs server-side (background task) -- and only
+  // for posts tagged as news -- then pushes the analyzed post over the
+  // WebSocket as a `post_updated` event. No extra call needed here.
+}
+
+// Upload one image or video; resolves to { id, kind, mimeType, url } to put in
+// `mediaIds`. The server checks the file's real type and size.
+export async function uploadMedia(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+  return request("/media/upload", { method: "POST", formData });
+}
+
+// A post's whole conversation: { ancestors: [...root first], replies: [...all depths] }
+export async function getThread(postId) {
+  return request(`/posts/${postId}/thread`);
+}
+
+// Admin only -- tier is "gold" | "news" | "government" | "company" | null.
+export async function setUserVerification(username, tier) {
+  return request(`/admin/users/${encodeURIComponent(username)}/verification`, {
+    method: "PUT",
+    body: { tier },
+  });
 }
 
 export async function deletePost(postId) {
@@ -268,8 +304,7 @@ export async function searchGifs(query) {
 }
 
 // ---- Notifications ----------------------------------------------------------
-// Not in the original mock (that page is still hardcoded) but exposed here
-// for when Notifications.jsx gets wired up.
+// Likes, reposts, replies and fact-check results on your posts.
 
 export async function getNotifications() {
   return request("/notifications");
@@ -277,6 +312,15 @@ export async function getNotifications() {
 
 export async function markNotificationRead(id) {
   return request(`/notifications/${id}/read`, { method: "POST" });
+}
+
+export async function markAllNotificationsRead() {
+  return request("/notifications/read-all", { method: "POST" });
+}
+
+export async function getUnreadNotificationCount() {
+  const data = await request("/notifications/unread-count");
+  return data?.count ?? 0;
 }
 
 // ---- Demo data reset ----------------------------------------------------

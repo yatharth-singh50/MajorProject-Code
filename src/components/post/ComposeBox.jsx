@@ -1,26 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import { Image, Smile, MapPin, ChevronDown, X, Clapperboard } from "lucide-react";
+import { Image, Smile, MapPin, ChevronDown, X, Clapperboard, Newspaper, Loader2, Play } from "lucide-react";
 import Avatar from "../common/Avatar";
 import Button from "../common/Button";
 import EmojiPicker from "../common/EmojiPicker";
 import GifPicker from "../common/GifPicker";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-import { createPost } from "../../services/api";
+import { createPost, uploadMedia } from "../../services/api";
 import { LANGUAGES } from "../../services/mockData";
 import { cx } from "../../utils/format";
 
 const MAX_LEN = 280;
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // matches the backend's MAX_IMAGE_SIZE_BYTES
+const MAX_ATTACHMENTS = 4;
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // keep in step with the backend limits
+const MAX_VIDEO_BYTES = 12 * 1024 * 1024;
 
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result); // a data: URI
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+// Mirrors the backend's news-keyword detection (services/news_detect.py) so the
+// UI can say "will be fact-checked" before you post. The server is the
+// authority -- this is only a hint.
+const NEWS_KEYWORDS = /(#\s?breaking(\s?news)?\b|#\s?news(alert)?\b|\bbreaking\s+news\b|ब्रेकिंग\s*न्यूज़?|#\s?समाचार)/i;
+
+let attachmentKey = 0;
 
 export default function ComposeBox({
   parentId = null,
@@ -37,20 +37,33 @@ export default function ComposeBox({
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [gifOpen, setGifOpen] = useState(false);
   const [posting, setPosting] = useState(false);
+  const [isNews, setIsNews] = useState(false);
 
-  // Attached media -- mutually exclusive, mirroring the backend's rejection
-  // of posts that try to send both an image and a gif_url at once.
-  const [image, setImage] = useState(null); // { dataUrl, mimeType }
-  const [gif, setGif] = useState(null); // { url, previewUrl, title }
+  // Up to MAX_ATTACHMENTS of any mix. Each: { key, kind, previewUrl,
+  // uploading, mediaId?, gifUrl?, objectUrl? } -- files upload as soon as
+  // they're picked, so posting is instant.
+  const [attachments, setAttachments] = useState([]);
 
   const textareaRef = useRef(null);
   const fileInputRef = useRef(null);
   const langRef = useRef(null);
   const emojiRef = useRef(null);
   const gifRef = useRef(null);
+  const attachmentsRef = useRef(attachments);
+  attachmentsRef.current = attachments;
 
   const remaining = MAX_LEN - content.length;
-  const canPost = content.trim().length > 0 && remaining >= 0 && !posting;
+  const uploading = attachments.some((a) => a.uploading);
+  const canPost = content.trim().length > 0 && remaining >= 0 && !posting && !uploading;
+  const slotsLeft = MAX_ATTACHMENTS - attachments.length;
+  const autoNews = !isNews && !parentId && NEWS_KEYWORDS.test(content);
+  const willBeChecked = !parentId && (isNews || autoNews);
+
+  // Release preview blobs when the composer goes away.
+  useEffect(
+    () => () => attachmentsRef.current.forEach((a) => a.objectUrl && URL.revokeObjectURL(a.objectUrl)),
+    []
+  );
 
   // Outside-click-to-close for each popover independently.
   useEffect(() => {
@@ -68,30 +81,64 @@ export default function ComposeBox({
     el.style.height = `${el.scrollHeight}px`;
   };
 
-  const handlePickImage = () => fileInputRef.current?.click();
+  const removeAttachment = (key) => {
+    setAttachments((list) => {
+      const gone = list.find((a) => a.key === key);
+      if (gone?.objectUrl) URL.revokeObjectURL(gone.objectUrl);
+      return list.filter((a) => a.key !== key);
+    });
+  };
 
-  const handleImageFile = async (e) => {
-    const file = e.target.files?.[0];
+  const handleFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
     e.target.value = "";
-    if (!file) return;
+    if (files.length === 0) return;
 
-    if (!file.type.startsWith("image/")) {
-      push("Only image files can be attached (no documents).");
-      return;
-    }
-    if (file.size > MAX_IMAGE_BYTES) {
-      push("That image is too large (max 5MB).");
-      return;
+    if (files.length > slotsLeft) {
+      push(`You can attach up to ${MAX_ATTACHMENTS} items per post.`);
     }
 
-    const dataUrl = await fileToBase64(file);
-    setImage({ dataUrl, mimeType: file.type });
-    setGif(null); // mutually exclusive with a GIF
+    for (const file of files.slice(0, Math.max(slotsLeft, 0))) {
+      const isVideo = file.type.startsWith("video/");
+      const isImage = file.type.startsWith("image/");
+      if (!isVideo && !isImage) {
+        push(`"${file.name}" isn't an image or video — documents can't be attached.`);
+        continue;
+      }
+      if (file.size > (isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES)) {
+        push(`"${file.name}" is too large (max ${isVideo ? 12 : 5}MB).`);
+        continue;
+      }
+
+      const key = ++attachmentKey;
+      const objectUrl = URL.createObjectURL(file);
+      setAttachments((list) => [
+        ...list,
+        { key, kind: isVideo ? "video" : "image", previewUrl: objectUrl, objectUrl, uploading: true },
+      ]);
+
+      try {
+        const ref = await uploadMedia(file);
+        // The server reports the real type (a .gif file comes back as "gif").
+        setAttachments((list) =>
+          list.map((a) => (a.key === key ? { ...a, uploading: false, mediaId: ref.id, kind: ref.kind } : a))
+        );
+      } catch (err) {
+        push(err.message || `Couldn't upload "${file.name}".`);
+        removeAttachment(key);
+      }
+    }
   };
 
   const handleSelectGif = (g) => {
-    setGif(g);
-    setImage(null); // mutually exclusive with an uploaded image
+    if (slotsLeft <= 0) {
+      push(`You can attach up to ${MAX_ATTACHMENTS} items per post.`);
+      return;
+    }
+    setAttachments((list) => [
+      ...list,
+      { key: ++attachmentKey, kind: "gif", previewUrl: g.previewUrl || g.url, gifUrl: g.url, uploading: false },
+    ]);
     setGifOpen(false);
   };
 
@@ -103,8 +150,7 @@ export default function ComposeBox({
     }
     const start = el.selectionStart ?? content.length;
     const end = el.selectionEnd ?? content.length;
-    const next = content.slice(0, start) + emoji + content.slice(end);
-    setContent(next);
+    setContent(content.slice(0, start) + emoji + content.slice(end));
     requestAnimationFrame(() => {
       el.focus();
       el.selectionStart = el.selectionEnd = start + emoji.length;
@@ -120,15 +166,16 @@ export default function ComposeBox({
         content: content.trim(),
         languageCode: language || null,
         parentId,
-        imageBase64: image?.dataUrl || null,
-        imageMimeType: image?.mimeType || null,
-        gifUrl: gif?.url || null,
+        mediaIds: attachments.filter((a) => a.mediaId).map((a) => a.mediaId),
+        gifUrls: attachments.filter((a) => a.gifUrl).map((a) => a.gifUrl),
+        isNews: !parentId && isNews,
       });
       onCreated?.(post);
+      attachments.forEach((a) => a.objectUrl && URL.revokeObjectURL(a.objectUrl));
       setContent("");
       setLanguage("");
-      setImage(null);
-      setGif(null);
+      setAttachments([]);
+      setIsNews(false);
       if (textareaRef.current) textareaRef.current.style.height = "auto";
     } catch (err) {
       push(err.message || "Couldn't post that. Try again.");
@@ -138,7 +185,6 @@ export default function ComposeBox({
   };
 
   const selectedLangName = LANGUAGES.find((l) => l.code === language)?.name;
-  const previewSrc = image?.dataUrl || gif?.previewUrl || gif?.url;
 
   return (
     <div className={cx("flex gap-3", compact ? "px-4 py-3" : "px-4 py-4")}>
@@ -157,36 +203,65 @@ export default function ComposeBox({
           className="focus-ring w-full resize-none bg-transparent text-[16px] leading-relaxed text-text placeholder:text-text-faint"
         />
 
-        {previewSrc && (
-          <div className="relative mt-2 inline-block">
-            <img src={previewSrc} alt="" className="max-h-52 rounded-xl border border-border object-cover" />
-            <button
-              onClick={() => {
-                setImage(null);
-                setGif(null);
-              }}
-              className="focus-ring absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/75"
-              aria-label="Remove attachment"
-            >
-              <X size={14} />
-            </button>
-            {gif && (
-              <span className="absolute bottom-1.5 left-1.5 rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-                GIF
-              </span>
-            )}
+        {attachments.length > 0 && (
+          <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+            {attachments.map((a) => (
+              <div key={a.key} className="relative aspect-square overflow-hidden rounded-xl border border-border bg-black">
+                {a.kind === "video" ? (
+                  <video src={a.previewUrl} muted playsInline preload="metadata" className="h-full w-full object-cover" />
+                ) : (
+                  <img src={a.previewUrl} alt="" className="h-full w-full object-cover" />
+                )}
+                {a.uploading && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/50 text-white">
+                    <Loader2 size={20} className="animate-spin" />
+                  </span>
+                )}
+                <button
+                  onClick={() => removeAttachment(a.key)}
+                  className="focus-ring absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black/65 text-white hover:bg-black/80"
+                  aria-label="Remove attachment"
+                >
+                  <X size={13} />
+                </button>
+                {a.kind === "gif" && (
+                  <span className="absolute bottom-1 left-1 rounded bg-black/65 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-white">
+                    GIF
+                  </span>
+                )}
+                {a.kind === "video" && !a.uploading && (
+                  <span className="absolute bottom-1 left-1 flex items-center gap-0.5 rounded bg-black/65 px-1 py-0.5 text-[9px] font-semibold uppercase text-white">
+                    <Play size={8} fill="currentColor" /> Video
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
         )}
 
+        {willBeChecked && (
+          <p className="mt-2 flex items-center gap-1.5 text-[12px] text-brand">
+            <Newspaper size={13} />
+            {isNews ? "Tagged as news" : "Looks like news"} — this post will be fact-checked.
+          </p>
+        )}
+
         <div className="mt-2 flex items-center justify-between border-t border-border pt-3">
-          <div className="flex items-center gap-1 text-brand">
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
+          <div className="flex flex-wrap items-center gap-1 text-brand">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/mp4,video/webm,video/quicktime"
+              multiple
+              className="hidden"
+              onChange={handleFiles}
+            />
             <button
-              onClick={handlePickImage}
-              disabled={!!gif}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={slotsLeft <= 0}
               className="focus-ring flex h-8 w-8 items-center justify-center rounded-full hover:bg-brand-soft disabled:opacity-40"
-              aria-label="Add image"
-              title="Add image"
+              aria-label="Add photos or video"
+              title={slotsLeft <= 0 ? `Up to ${MAX_ATTACHMENTS} attachments` : "Add photos or video"}
             >
               <Image size={17} strokeWidth={1.8} />
             </button>
@@ -194,7 +269,7 @@ export default function ComposeBox({
             <div ref={gifRef} className="relative">
               <button
                 onClick={() => setGifOpen((s) => !s)}
-                disabled={!!image}
+                disabled={slotsLeft <= 0}
                 className="focus-ring flex h-8 w-8 items-center justify-center rounded-full hover:bg-brand-soft disabled:opacity-40"
                 aria-label="Add GIF"
                 title="Add GIF"
@@ -215,6 +290,21 @@ export default function ComposeBox({
               </button>
               {emojiOpen && <EmojiPicker onSelect={insertEmoji} />}
             </div>
+
+            {!parentId && (
+              <button
+                onClick={() => setIsNews((s) => !s)}
+                aria-pressed={isNews}
+                className={cx(
+                  "focus-ring flex items-center gap-1 rounded-full border px-2.5 py-1 text-[12px] font-medium transition-colors",
+                  isNews ? "border-brand bg-brand-soft text-brand" : "border-border text-text-dim hover:bg-surface-hover"
+                )}
+                title="Tag as news — news posts are fact-checked; everything else is posted as-is"
+              >
+                <Newspaper size={13} />
+                News
+              </button>
+            )}
 
             <button
               className="focus-ring flex h-8 w-8 items-center justify-center rounded-full opacity-40"
@@ -261,7 +351,7 @@ export default function ComposeBox({
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             {content.length > 0 && (
               <span
                 className={cx(
@@ -273,7 +363,7 @@ export default function ComposeBox({
               </span>
             )}
             <Button size={compact ? "sm" : "md"} disabled={!canPost} onClick={handleSubmit}>
-              {posting ? "Posting…" : parentId ? "Reply" : "Post"}
+              {posting ? "Posting…" : uploading ? "Uploading…" : parentId ? "Reply" : "Post"}
             </Button>
           </div>
         </div>
