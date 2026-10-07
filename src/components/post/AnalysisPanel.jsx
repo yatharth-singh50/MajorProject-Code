@@ -1,4 +1,5 @@
-import { ExternalLink, Search, Image as ImageGlyph } from "lucide-react";
+import { Link } from "react-router-dom";
+import { ExternalLink, Search, ShieldCheck, Image as ImageGlyph } from "lucide-react";
 import OverallVerdictBadge from "./OverallVerdictBadge";
 import VerificationBadge from "./VerificationBadge";
 import { cx } from "../../utils/format";
@@ -88,37 +89,68 @@ export default function AnalysisPanel({ analysis, className = "" }) {
         )}
 
         {matchedClaims?.length > 0 ? (
-          <ul className="space-y-1.5">
-            {matchedClaims.map((c, i) => (
-              <li key={i} className="flex items-center justify-between gap-3 text-xs">
-                {c.url ? (
-                  <a
-                    href={c.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    className="flex min-w-0 items-center gap-1.5 text-text-dim hover:text-brand hover:underline"
-                    title={c.url}
-                  >
-                    <ExternalLink size={11} className="shrink-0 text-text-faint" />
-                    <span className="truncate">{c.title}</span>
-                  </a>
-                ) : (
-                  <span className="flex min-w-0 items-center gap-1.5 text-text-dim">
-                    <ExternalLink size={11} className="shrink-0 text-text-faint" />
-                    <span className="truncate">{c.title}</span>
-                  </span>
-                )}
-                <span
-                  className={cx(
-                    "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
-                    c.stance === "supports" ? "bg-real-soft text-real" : "bg-fake-soft text-fake"
+          <ul className="space-y-3">
+            {matchedClaims.map((c, i) => {
+              // Platform posts link inside the app; websites open in a new tab.
+              const internal = c.url?.startsWith("/");
+              const label = (
+                <>
+                  <ExternalLink size={11} className="shrink-0 text-text-faint" />
+                  <span className="truncate">{c.title}</span>
+                </>
+              );
+              const linkClass = "flex min-w-0 items-center gap-1.5 text-text-dim hover:text-brand hover:underline";
+              return (
+                <li key={i} className="text-xs">
+                  <div className="flex items-center justify-between gap-3">
+                    {!c.url ? (
+                      <span className="flex min-w-0 items-center gap-1.5 text-text-dim">{label}</span>
+                    ) : internal ? (
+                      <Link to={c.url} onClick={(e) => e.stopPropagation()} className={linkClass} title={c.title}>
+                        {label}
+                      </Link>
+                    ) : (
+                      <a
+                        href={c.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className={linkClass}
+                        title={c.url}
+                      >
+                        {label}
+                      </a>
+                    )}
+                    <span
+                      className={cx(
+                        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                        c.stance === "supports" ? "bg-real-soft text-real" : "bg-fake-soft text-fake"
+                      )}
+                    >
+                      {c.stance === "supports" ? "Supports" : "Contradicts"}
+                    </span>
+                  </div>
+
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 pl-[17px] text-[11px] text-text-faint">
+                    {c.official ? (
+                      <span className="inline-flex items-center gap-1 font-medium text-brand">
+                        <ShieldCheck size={11} />
+                        {c.source}
+                      </span>
+                    ) : (
+                      <span>{c.source}</span>
+                    )}
+                    {c.read && !c.official && <span>· read in full</span>}
+                  </p>
+
+                  {c.quote && (
+                    <p className="ml-[17px] mt-1 border-l-2 border-border pl-2 text-[12px] italic leading-snug text-text-dim">
+                      “{c.quote}”
+                    </p>
                   )}
-                >
-                  {c.stance === "supports" ? "Supports" : "Contradicts"}
-                </span>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <p className="text-[12px] text-text-faint">
