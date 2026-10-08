@@ -9,6 +9,7 @@ import ActionBar from "./ActionBar";
 import MediaGrid from "./MediaGrid";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+import { useViewTracking } from "../../hooks/useViewTracking";
 import { timeAgo, cx } from "../../utils/format";
 
 /**
@@ -31,6 +32,9 @@ export default function PostCard({
   const navigate = useNavigate();
   const { user: me } = useAuth();
   const { push } = useToast();
+  // Counts a view once this card has been on screen for a moment (hooks must
+  // run before the early return below).
+  const [viewRef, views] = useViewTracking(post?.id, post?.stats?.views ?? 0);
 
   if (!post) return null;
   const { author, content, translation, language, createdAt, analysis, attachments } = post;
@@ -69,6 +73,7 @@ export default function PostCard({
 
   return (
     <article
+      ref={viewRef}
       onClick={openPost}
       className={cx(
         "border-b border-border px-4 py-3.5 transition-colors",
@@ -159,7 +164,7 @@ export default function PostCard({
 
           <div className="mt-2.5" onClick={(e) => e.stopPropagation()}>
             <ActionBar
-              post={post}
+              post={{ ...post, stats: { ...post.stats, views } }}
               onLike={() => onLike?.(post.id)}
               onRepost={() => onRepost?.(post.id)}
               onReply={onReply ? () => onReply(post) : openPost}

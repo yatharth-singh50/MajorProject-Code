@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Bell, Heart, Repeat2, MessageCircle, ShieldCheck, CheckCheck } from "lucide-react";
+import { Bell, Heart, Repeat2, MessageCircle, ShieldCheck, CheckCheck, UserPlus } from "lucide-react";
 import Avatar from "../components/common/Avatar";
 import VerifiedBadge from "../components/common/VerifiedBadge";
 import EmptyState from "../components/common/EmptyState";
@@ -19,12 +19,14 @@ const ICONS = {
   repost: { Icon: Repeat2, color: "text-real", fill: false },
   reply: { Icon: MessageCircle, color: "text-brand", fill: false },
   verdict_ready: { Icon: ShieldCheck, color: "text-brand", fill: false },
+  follow: { Icon: UserPlus, color: "text-brand", fill: false },
 };
 
 const VERBS = {
   like: "liked your post",
   repost: "reposted your post",
   reply: "replied to you",
+  follow: "followed you",
 };
 
 // The sidebar's unread badge listens for this so it updates the moment
@@ -57,6 +59,7 @@ export default function Notifications() {
       markNotificationRead(n.id).then(notifyChanged).catch(() => {});
     }
     if (n.postId) navigate(`/post/${n.postId}`);
+    else if (n.type === "follow" && n.actor) navigate(`/profile/${n.actor.username}`);
   };
 
   const readAll = async () => {

@@ -9,13 +9,13 @@ import ImageCropModal from "../components/common/ImageCropModal";
 import PostCard from "../components/post/PostCard";
 import { PostSkeleton } from "../components/common/Skeleton";
 import EmptyState from "../components/common/EmptyState";
-import { getUserByUsername, getUserPosts, setUserVerification } from "../services/api";
+import { getUserByUsername, getUserPosts, setUserVerification, followUser, unfollowUser } from "../services/api";
 import { usePostList } from "../hooks/usePostList";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { compactNumber, cx } from "../utils/format";
 
-const TABS = ["Posts", "Replies", "Likes"];
+const TABS = ["Posts", "Replies", "Reposts"];
 
 function CredibilityRing({ score }) {
   if (score === null || score === undefined) {
@@ -71,6 +71,11 @@ export default function Profile() {
 
   const isMe = me?.username === username;
 
+  // Follow / unfollow (optimistic: the button and count flip at once, then
+  // settle on what the server says, or roll back if it failed).
+  const [followPending, setFollowPending] = useState(false);
+  const [hoverFollow, setHoverFollow] = useState(false);
+
   // Admin-only: grant/revoke this account's verification tier.
   const [tierDraft, setTierDraft] = useState("");
   const [savingTier, setSavingTier] = useState(false);
@@ -94,6 +99,22 @@ export default function Profile() {
     setProfile((p) => ({ ...p, ...updated }));
     setEditOpen(false);
     push("Profile updated");
+  };
+
+  const handleFollowToggle = async () => {
+    if (followPending || !profile) return;
+    const wasFollowing = profile.isFollowing;
+    setFollowPending(true);
+    setProfile((p) => ({ ...p, isFollowing: !wasFollowing, followerCount: Math.max(p.followerCount + (wasFollowing ? -1 : 1), 0) }));
+    try {
+      const updated = await (wasFollowing ? unfollowUser(profile.username) : followUser(profile.username));
+      setProfile((p) => ({ ...p, ...updated }));
+    } catch (err) {
+      setProfile((p) => ({ ...p, isFollowing: wasFollowing, followerCount: Math.max(p.followerCount + (wasFollowing ? 1 : -1), 0) }));
+      push(err.message || "Couldn't update follow");
+    } finally {
+      setFollowPending(false);
+    }
   };
 
   const handleSaveTier = async () => {
@@ -203,7 +224,16 @@ export default function Profile() {
               Edit profile
             </Button>
           ) : (
-            <Button className="mb-2">Follow</Button>
+            <Button
+              variant={profile.isFollowing ? "outline" : undefined}
+              onClick={handleFollowToggle}
+              disabled={followPending}
+              onMouseEnter={() => setHoverFollow(true)}
+              onMouseLeave={() => setHoverFollow(false)}
+              className={cx("mb-2 min-w-[6.5rem]", profile.isFollowing && hoverFollow && "!border-fake/50 !text-fake")}
+            >
+              {profile.isFollowing ? (hoverFollow ? "Unfollow" : "Following") : "Follow"}
+            </Button>
           )}
         </div>
 
@@ -312,7 +342,18 @@ export default function Profile() {
           <PostSkeleton />
         </>
       ) : posts.length === 0 ? (
-        <EmptyState title={`No ${tab.toLowerCase()} yet`} description={isMe ? "What you post here will show up for others too." : "Nothing to show yet."} />
+        <EmptyState
+          title={`No ${tab.toLowerCase()} yet`}
+          description={
+            tab === "Reposts"
+              ? isMe
+                ? "Posts you repost show up here."
+                : "Nothing reposted yet."
+              : isMe
+                ? "What you post here will show up for others too."
+                : "Nothing to show yet."
+          }
+        />
       ) : (
         posts.map((p) => <PostCard key={p.id} post={p} onLike={handleLike} onRepost={handleRepost} onDelete={handleDelete} />)
       )}

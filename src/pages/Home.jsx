@@ -6,15 +6,18 @@ import { PostSkeleton } from "../components/common/Skeleton";
 import EmptyState from "../components/common/EmptyState";
 import { usePostList } from "../hooks/usePostList";
 import { getFeed, onPostCreated } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import { cx } from "../utils/format";
 
 const TABS = ["For you", "Following"];
 
 export default function Home() {
   const [tab, setTab] = useState("For you");
+  const { user: me } = useAuth();
+  // "Following" is the accounts you follow plus your own posts; switching tabs refetches.
   const { posts, prependPost, handleLike, handleRepost, handleDelete } = usePostList(
-    () => getFeed({ limit: 30 }),
-    []
+    () => getFeed({ limit: 30, following: tab === "Following" }),
+    [tab]
   );
 
   // New top-level posts can come from this page's own composer *or* the
@@ -23,9 +26,11 @@ export default function Home() {
   // composer instance individually.
   useEffect(() => {
     return onPostCreated((post) => {
-      if (post.parentId === null) prependPost(post);
+      // On "Following", only your own new posts belong at the top -- other
+      // people's new posts there depend on whether you follow them.
+      if (post.parentId === null && (tab === "For you" || post.authorId === me?.id)) prependPost(post);
     });
-  }, [prependPost]);
+  }, [prependPost, tab, me?.id]);
 
   return (
     <div>
@@ -52,20 +57,22 @@ export default function Home() {
         <ComposeBox compact />
       </div>
 
-      {tab === "Following" ? (
-        <EmptyState
-          icon={Sparkles}
-          title="Nothing here yet"
-          description="Posts from accounts you follow will show up in this tab. Switch to “For you” to see the full demo feed."
-        />
-      ) : posts === null ? (
+      {posts === null ? (
         <>
           <PostSkeleton />
           <PostSkeleton />
           <PostSkeleton />
         </>
       ) : posts.length === 0 ? (
-        <EmptyState title="No posts yet" description="Be the first to post something." />
+        tab === "Following" ? (
+          <EmptyState
+            icon={Sparkles}
+            title="Nothing here yet"
+            description="Posts from accounts you follow show up here. Follow people from their profile, or switch to “For you”."
+          />
+        ) : (
+          <EmptyState title="No posts yet" description="Be the first to post something." />
+        )
       ) : (
         posts.map((post) => (
           <PostCard key={post.id} post={post} onLike={handleLike} onRepost={handleRepost} onDelete={handleDelete} />

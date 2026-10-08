@@ -23,6 +23,7 @@ import {
 import { usePostList } from "../hooks/usePostList";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
+import { trackView } from "../services/viewTracker";
 import { fullDate, cx } from "../utils/format";
 
 const MAX_INDENT_LEVELS = 3; // deeper replies keep the same indent so they don't squeeze off-screen
@@ -38,6 +39,9 @@ export default function PostDetail() {
   const [deleting, setDeleting] = useState(false);
   // The comment an inline reply composer is currently open under (null = none).
   const [replyingTo, setReplyingTo] = useState(null);
+  // The view count after *this* visit was counted (the post fetch and the
+  // view report race each other, so keep it separately and take the larger).
+  const [viewCount, setViewCount] = useState(0);
 
   // Every reply beneath this post, at any depth, oldest first. The fetcher
   // also captures the ancestors (the posts above this one) from the same call.
@@ -56,7 +60,10 @@ export default function PostDetail() {
   useEffect(() => {
     setPost(null);
     setReplyingTo(null);
+    setViewCount(0);
     getPost(id).then(setPost);
+    // Opening a post counts as a view straight away (no batching delay).
+    trackView(id, { immediate: true }).then((count) => count && setViewCount(count));
   }, [id]);
 
   const replyIdsRef = useRef(new Set());
@@ -258,11 +265,16 @@ export default function PostDetail() {
               <span><strong className="text-text">{post.stats.comments}</strong> Replies</span>
               <span><strong className="text-text">{post.stats.reposts}</strong> Reposts</span>
               <span><strong className="text-text">{post.stats.likes}</strong> Likes</span>
-              <span><strong className="text-text">{post.stats.views}</strong> Views</span>
+              <span><strong className="text-text">{Math.max(post.stats.views, viewCount)}</strong> Views</span>
             </div>
 
             <div className="mt-3">
-              <ActionBar post={post} onLike={handleLike} onRepost={handleRepost} onReply={() => {}} />
+              <ActionBar
+                post={{ ...post, stats: { ...post.stats, views: Math.max(post.stats.views, viewCount) } }}
+                onLike={handleLike}
+                onRepost={handleRepost}
+                onReply={() => {}}
+              />
             </div>
 
             {post.analysis.status !== "skipped" && (

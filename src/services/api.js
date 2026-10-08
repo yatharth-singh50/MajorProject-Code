@@ -198,8 +198,8 @@ export function logout() {
 
 // ---- Feed -------------------------------------------------------------------
 
-export async function getFeed({ limit = 20 } = {}) {
-  return request(`/feed?limit=${limit}`);
+export async function getFeed({ limit = 20, following = false } = {}) {
+  return request(`/feed?limit=${limit}${following ? "&following=true" : ""}`);
 }
 
 export async function getPost(id) {
@@ -270,11 +270,28 @@ export async function toggleRepost(postId) {
 // ---- Users / profile ------------------------------------------------------
 
 export async function getUserByUsername(username) {
-  return request(`/users/${encodeURIComponent(username)}`, { auth: false });
+  return request(`/users/${encodeURIComponent(username)}`);
 }
 
 export async function getUserPosts(username, tab = "posts") {
-  return request(`/users/${encodeURIComponent(username)}/posts?tab=${tab}`, { auth: false });
+  return request(`/users/${encodeURIComponent(username)}/posts?tab=${tab}`);
+}
+
+// Follow / unfollow. Both resolve to the target's updated profile (fresh
+// follower count + `isFollowing`).
+export async function followUser(username) {
+  return request(`/users/${encodeURIComponent(username)}/follow`, { method: "POST" });
+}
+
+export async function unfollowUser(username) {
+  return request(`/users/${encodeURIComponent(username)}/follow`, { method: "DELETE" });
+}
+
+// Report posts that scrolled into view or were opened (<= 50 ids).
+// Resolves to { counts: { [postId]: views } }. The server counts each person
+// once per post per half hour, so repeats are harmless.
+export async function recordViews(ids) {
+  return request("/posts/views", { method: "POST", body: { ids } });
 }
 
 export async function updateUser(username, patch) {
