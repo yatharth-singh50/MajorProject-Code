@@ -250,6 +250,12 @@ export async function setUserVerification(username, tier) {
   });
 }
 
+// Admin only -- re-runs a post through the fact-check pipeline. Resolves to the
+// post in its "Analyzing..." state; the new result arrives via `post_updated`.
+export async function recheckPost(postId) {
+  return request(`/admin/posts/${postId}/recheck`, { method: "POST" });
+}
+
 export async function deletePost(postId) {
   return request(`/posts/${postId}`, { method: "DELETE" });
   // Returns null (204 No Content). A delete cascades to replies on the

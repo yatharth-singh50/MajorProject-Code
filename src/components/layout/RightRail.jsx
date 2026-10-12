@@ -10,7 +10,10 @@ export default function RightRail() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    getTrending().then(setTrending);
+    const load = () => getTrending().then(setTrending).catch(() => {});
+    load();
+    const t = setInterval(load, 60000);
+    return () => clearInterval(t);
   }, []);
 
   const submitSearch = (e) => {
@@ -59,6 +62,9 @@ export default function RightRail() {
         <div className="mb-3 flex items-center justify-between">
           <span className="text-[15px] font-bold text-text">Trending</span>
         </div>
+        {trending.length === 0 && (
+          <p className="py-2 text-[13px] text-text-faint">Nothing trending yet — post with a #hashtag to start one.</p>
+        )}
         <ul>
           {trending.map((t) => (
             <li key={t.tag}>

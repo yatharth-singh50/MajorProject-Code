@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ChevronDown, Languages, Trash2, Newspaper } from "lucide-react";
+import { ChevronDown, Languages, Trash2, Newspaper, RefreshCw } from "lucide-react";
 import Avatar from "../common/Avatar";
 import VerifiedBadge from "../common/VerifiedBadge";
 import OverallVerdictBadge from "./OverallVerdictBadge";
@@ -9,6 +9,7 @@ import ActionBar from "./ActionBar";
 import MediaGrid from "./MediaGrid";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+import { recheckPost } from "../../services/api";
 import { useViewTracking } from "../../hooks/useViewTracking";
 import { timeAgo, cx } from "../../utils/format";
 
@@ -29,6 +30,7 @@ export default function PostCard({
   const [showTranslation, setShowTranslation] = useState(false);
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [deleting, setDeleting] = useState(false);
+  const [rechecking, setRechecking] = useState(false);
   const navigate = useNavigate();
   const { user: me } = useAuth();
   const { push } = useToast();
@@ -53,6 +55,22 @@ export default function PostCard({
   const openProfile = (e) => {
     e.stopPropagation();
     navigate(`/profile/${author.username}`);
+  };
+
+  // Admins can send any top-level post back through the pipeline.
+  const canRecheck = me?.isAdmin && !post.parentId && analysis.status !== "processing";
+  const handleRecheck = async (e) => {
+    e.stopPropagation();
+    if (rechecking) return;
+    setRechecking(true);
+    try {
+      await recheckPost(post.id);
+      push("Re-checking post…");
+    } catch (err) {
+      push(err.message || "Couldn't re-check the post");
+    } finally {
+      setRechecking(false);
+    }
   };
 
   const handleDeleteClick = async (e) => {
@@ -96,11 +114,22 @@ export default function PostCard({
             <span className="text-text-faint">·</span>
             <span className="shrink-0 text-text-faint">{timeAgo(createdAt)}</span>
 
+            {canRecheck && (
+              <button
+                onClick={handleRecheck}
+                disabled={rechecking}
+                className="focus-ring ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-faint hover:bg-surface-hover hover:text-text"
+                aria-label="Re-check post"
+                title="Re-run fact-check (admin)"
+              >
+                <RefreshCw size={14} strokeWidth={1.8} className={rechecking ? "animate-spin" : ""} />
+              </button>
+            )}
             {canDelete && onDelete && (
               <button
                 onClick={handleDeleteClick}
                 disabled={deleting}
-                className="focus-ring ml-auto flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-faint hover:bg-fake-soft hover:text-fake"
+                className={cx("focus-ring flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-text-faint hover:bg-fake-soft hover:text-fake", !canRecheck && "ml-auto")}
                 aria-label="Delete post"
                 title={me?.id === post.authorId ? "Delete post" : "Delete post (admin)"}
               >

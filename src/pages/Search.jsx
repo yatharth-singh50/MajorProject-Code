@@ -21,7 +21,7 @@ export default function Search() {
 
   useEffect(() => {
     if (!query) {
-      getTrending().then(setTrending);
+      getTrending().then(setTrending).catch(() => setTrending([]));
       setResults(null);
       return;
     }
@@ -57,6 +57,9 @@ export default function Search() {
       {!query ? (
         <div className="p-4">
           <h2 className="mb-3 font-serif text-lg text-text">Trending</h2>
+          {trending.length === 0 && (
+            <p className="px-3 text-sm text-text-faint">Nothing trending yet — post with a #hashtag to start one.</p>
+          )}
           <ul className="space-y-1">
             {trending.map((t) => (
               <li key={t.tag}>
