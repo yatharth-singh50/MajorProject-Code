@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ShieldCheck } from "lucide-react";
+import Logo from "../components/common/Logo";
 import Button from "../components/common/Button";
 import { useAuth } from "../context/AuthContext";
 
@@ -80,7 +80,7 @@ export default function SignUp() {
     <div className="flex min-h-screen w-full items-center justify-center bg-bg px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-2 text-center">
-          <ShieldCheck size={34} className="text-brand" strokeWidth={1.6} />
+          <Logo size={56} />
           <h1 className="font-serif text-2xl font-semibold italic text-text">Sāthi</h1>
           <p className="text-[13px] text-text-faint">Create an account to start posting.</p>
         </div>

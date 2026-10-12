@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { Home, Search, Bell, User, Settings, Feather, MoreHorizontal, ShieldCheck, LogOut } from "lucide-react";
+import { Home, Search, Bell, User, Settings, Feather, MoreHorizontal, LogOut } from "lucide-react";
 import Avatar from "../common/Avatar";
 import VerifiedBadge from "../common/VerifiedBadge";
+import Logo from "../common/Logo";
 import Button from "../common/Button";
 import { useAuth } from "../../context/AuthContext";
 import { getUnreadNotificationCount, onNotification } from "../../services/api";
@@ -67,7 +68,7 @@ export default function Sidebar({ onCompose }) {
           onClick={() => navigate("/")}
           className="focus-ring mb-2 flex h-12 w-12 items-center justify-center rounded-full text-brand hover:bg-brand-soft xl:w-full xl:justify-start xl:gap-2 xl:px-3"
         >
-          <ShieldCheck size={26} strokeWidth={1.8} />
+          <Logo size={30} />
           <span className="hidden font-serif text-xl font-semibold italic text-text xl:inline">Sāthi</span>
         </button>
 

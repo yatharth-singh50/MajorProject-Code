@@ -1,4 +1,5 @@
-import { Check, ShieldCheck } from "lucide-react";
+import { Check } from "lucide-react";
+import Logo from "./Logo";
 import { cx } from "../../utils/format";
 
 // The tick next to a name. Which colour = what kind of account:
@@ -33,7 +34,7 @@ export default function VerifiedBadge({ user, size = 15, className = "" }) {
         <Check size={Math.round(size * 0.68)} strokeWidth={3.4} />
       </span>
       {tier === "admin" && (
-        <ShieldCheck size={size} strokeWidth={2.1} className="text-brand" aria-label="Sāthi" />
+        <Logo size={Math.round(size * 1.05)} />
       )}
     </span>
   );

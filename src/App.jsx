@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
-import { ShieldCheck } from "lucide-react";
+import Logo from "./components/common/Logo";
 import { ThemeProvider } from "./context/ThemeContext";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
@@ -16,7 +16,7 @@ import SignUp from "./pages/SignUp";
 function Splash() {
   return (
     <div className="flex h-screen w-full items-center justify-center bg-bg">
-      <ShieldCheck size={34} className="animate-pulse-soft text-brand" strokeWidth={1.6} />
+      <Logo size={64} className="animate-pulse-soft" />
     </div>
   );
 }
