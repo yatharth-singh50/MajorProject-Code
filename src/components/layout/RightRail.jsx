@@ -54,7 +54,7 @@ export default function RightRail() {
           ))}
         </ol>
         <p className="mt-3 border-t border-border pt-3 text-[11px] text-text-faint">
-          Demo pipeline — swap in your trained models via <code className="rounded bg-surface px-1 py-0.5">src/services/mlService.js</code>
+          Showcase Pipeline <code className="rounded bg-surface px-1 py-0.5"> </code>
         </p>
       </div>
 
@@ -87,7 +87,7 @@ export default function RightRail() {
         </button>
       </div>
 
-      <p className="px-2 pb-6 text-[12px] text-text-faint">Sāthi prototype · frontend demo build</p>
+      <p className="px-2 pb-6 text-[12px] text-text-faint">Sāthi prototype · This is a demonstration application</p>
     </aside>
   );
 }
