@@ -117,7 +117,7 @@ export const seedPosts = [
       status: "analyzed",
       verdict: "real",
       confidence: 0.94,
-      model: "IndicBERT-FND v0.4",
+      model: "MuRIL",
       explanation:
         "Claim cross-checked against RBI press releases. No recall notice found for the stated date; the circulating image's metadata matches a 2023 advisory reused with an edited date.",
       matchedClaims: [
@@ -144,7 +144,7 @@ export const seedPosts = [
       status: "analyzed",
       verdict: "fake",
       confidence: 0.88,
-      model: "IndicBERT-FND v0.4",
+      model: "MuRIL",
       explanation:
         "Reverse image search on keyframes matches a 2022 upload from a different district. No matching scheme announcement found for the claimed location or date.",
       matchedClaims: [
@@ -170,7 +170,7 @@ export const seedPosts = [
       status: "analyzed",
       verdict: "real",
       confidence: 0.81,
-      model: "IndicBERT-FND v0.4",
+      model: "MuRIL",
       explanation:
         "Matches official Kolkata Traffic Police advisory issued for the same morning window. Timing and location details align.",
       matchedClaims: [
@@ -194,7 +194,7 @@ export const seedPosts = [
       status: "analyzed",
       verdict: "uncertain",
       confidence: 0.52,
-      model: "IndicBERT-FND v0.4",
+      model: "MuRIL",
       explanation:
         "Opinion / technical claim about internal system performance — not a verifiable public-interest news claim. Flagged as low-priority for the fact pipeline.",
       matchedClaims: [],
@@ -218,7 +218,7 @@ export const seedPosts = [
       status: "analyzed",
       verdict: "fake",
       confidence: 0.91,
-      model: "IndicBERT-FND v0.4",
+      model: "MuRIL",
       explanation:
         "No corresponding circular found on the state education department portal. Message structure matches prior forwarded-message hoax templates flagged in the training set.",
       matchedClaims: [
@@ -242,7 +242,7 @@ export const seedPosts = [
       status: "processing",
       verdict: null,
       confidence: null,
-      model: "IndicBERT-FND v0.4",
+      model: "MuRIL",
       explanation: "",
       matchedClaims: [],
     },
@@ -260,7 +260,7 @@ export const seedPosts = [
     stats: { likes: 44, reposts: 0, comments: 0, views: 900 },
     likedByMe: false,
     repostedByMe: false,
-    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.4, model: "IndicBERT-FND v0.4", explanation: "Personal statement, not a factual claim.", matchedClaims: [] },
+    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.4, model: "MuRIL", explanation: "Personal statement, not a factual claim.", matchedClaims: [] },
   },
   {
     id: "c2",
@@ -273,7 +273,7 @@ export const seedPosts = [
     stats: { likes: 12, reposts: 0, comments: 0, views: 300 },
     likedByMe: false,
     repostedByMe: false,
-    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.35, model: "IndicBERT-FND v0.4", explanation: "Question, not a factual claim.", matchedClaims: [] },
+    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.35, model: "MuRIL", explanation: "Question, not a factual claim.", matchedClaims: [] },
   },
   {
     id: "c3",
@@ -286,7 +286,7 @@ export const seedPosts = [
     stats: { likes: 8, reposts: 0, comments: 0, views: 150 },
     likedByMe: false,
     repostedByMe: false,
-    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.3, model: "IndicBERT-FND v0.4", explanation: "Personal statement, not a factual claim.", matchedClaims: [] },
+    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.3, model: "MuRIL", explanation: "Personal statement, not a factual claim.", matchedClaims: [] },
   },
   // replies to p2
   {
@@ -300,7 +300,7 @@ export const seedPosts = [
     stats: { likes: 30, reposts: 0, comments: 0, views: 500 },
     likedByMe: false,
     repostedByMe: false,
-    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.4, model: "IndicBERT-FND v0.4", explanation: "Personal observation.", matchedClaims: [] },
+    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.4, model: "MuRIL", explanation: "Personal observation.", matchedClaims: [] },
   },
   {
     id: "c5",
@@ -313,7 +313,7 @@ export const seedPosts = [
     stats: { likes: 19, reposts: 0, comments: 0, views: 400 },
     likedByMe: false,
     repostedByMe: false,
-    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.4, model: "IndicBERT-FND v0.4", explanation: "Opinion / suggestion.", matchedClaims: [] },
+    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.4, model: "MuRIL", explanation: "Opinion / suggestion.", matchedClaims: [] },
   },
   // replies to p4
   {
@@ -327,7 +327,7 @@ export const seedPosts = [
     stats: { likes: 5, reposts: 0, comments: 0, views: 90 },
     likedByMe: false,
     repostedByMe: false,
-    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.3, model: "IndicBERT-FND v0.4", explanation: "Question.", matchedClaims: [] },
+    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.3, model: "MuRIL", explanation: "Question.", matchedClaims: [] },
   },
   {
     id: "c7",
@@ -340,7 +340,7 @@ export const seedPosts = [
     stats: { likes: 22, reposts: 0, comments: 0, views: 210 },
     likedByMe: false,
     repostedByMe: false,
-    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.3, model: "IndicBERT-FND v0.4", explanation: "Technical explanation.", matchedClaims: [] },
+    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.3, model: "MuRIL", explanation: "Technical explanation.", matchedClaims: [] },
   },
   {
     id: "c8",
@@ -353,7 +353,7 @@ export const seedPosts = [
     stats: { likes: 14, reposts: 0, comments: 0, views: 180 },
     likedByMe: false,
     repostedByMe: false,
-    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.3, model: "IndicBERT-FND v0.4", explanation: "Opinion.", matchedClaims: [] },
+    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.3, model: "MuRIL", explanation: "Opinion.", matchedClaims: [] },
   },
   {
     id: "c9",
@@ -366,7 +366,7 @@ export const seedPosts = [
     stats: { likes: 9, reposts: 0, comments: 0, views: 140 },
     likedByMe: false,
     repostedByMe: false,
-    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.3, model: "IndicBERT-FND v0.4", explanation: "Question.", matchedClaims: [] },
+    analysis: { status: "analyzed", verdict: "uncertain", confidence: 0.3, model: "MuRIL", explanation: "Question.", matchedClaims: [] },
   },
 ];
 

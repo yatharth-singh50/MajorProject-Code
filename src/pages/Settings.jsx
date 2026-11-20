@@ -132,7 +132,7 @@ export default function Settings() {
 
         <div className="mt-4 flex items-center gap-2 rounded-lg border border-border bg-bg-inset px-3 py-2.5 text-[13px] text-text-dim">
           <Cpu size={15} className="text-brand" />
-          Active model: <span className="font-medium text-text">IndicBERT-FND v0.4</span>
+          Active model: <span className="font-medium text-text">MuRIL - Large (reference only)</span>
         </div>
       </SettingsSection>
 
